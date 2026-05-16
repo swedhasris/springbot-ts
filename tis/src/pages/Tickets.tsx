@@ -333,11 +333,7 @@ export function Tickets() {
       return 0;
     };
 
-    if (filter === "assigned_to_me") {
-      const isAssigned = t.assignedTo === user?.uid || t.assignedTo === profile?.name || t.assignedToName === profile?.name;
-      const isCaller = t.caller === user?.email || t.caller === profile?.name || t.caller === user?.uid || t.createdBy === user?.uid;
-      if (!isAssigned && !isCaller) return false;
-    }
+    if (filter === "assigned_to_me" && t.assignedTo !== user?.uid && t.assignedTo !== profile?.name && t.assignedToName !== profile?.name) return false;
     if (filter === "open" && (t.status === "Resolved" || t.status === "Closed" || t.status === "Canceled")) return false;
     if (filter === "unassigned" && t.assignedTo) return false;
     if (filter === "resolved" && t.status !== "Resolved" && t.status !== "Closed") return false;
