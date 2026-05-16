@@ -149,13 +149,10 @@ export class OmniChannelEngine {
       }
 
       // 1. Check if this is a reply to an existing ticket
-      const ticketMatch = subject.match(/INC(\d+)/i) || subject.match(/\[TK-(\d+)\]/i) || body.match(/INC(\d+)/i);
+      const ticketMatch = subject.match(/INC(\d+)/i) || body.match(/INC(\d+)/i);
       
       if (ticketMatch) {
         let ticketNumber = ticketMatch[0].toUpperCase();
-        if (ticketNumber.startsWith('[TK-')) {
-          ticketNumber = ticketNumber.replace('[TK-', 'INC').replace(']', '');
-        }
 
         const tickets = await query("SELECT id, assigned_to, ticket_number, title FROM tickets WHERE ticket_number = ?", [ticketNumber]);
         
@@ -248,13 +245,13 @@ export class OmniChannelEngine {
       } catch {}
 
       // Send Acknowledgement using THIS company's email
-      await this.sendEmailByConfig(config, from, `[TK-${ticketNumber.replace('INC', '')}] Ticket Created: ${subject}`, `
+      await this.sendEmailByConfig(config, from, `[${ticketNumber}] Ticket Created: ${subject}`, `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
           <h2 style="color: #2563eb;">${config.company_name} Support</h2>
           <p>Hello,</p>
           <p>We have received your email and a new support ticket has been opened for you.</p>
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px solid #e2e8f0;">
-            <p style="margin: 0;"><strong>Ticket Number:</strong> TK-${ticketNumber.replace('INC', '')}</p>
+            <p style="margin: 0;"><strong>Ticket Number:</strong> ${ticketNumber}</p>
             <p style="margin: 5px 0 0 0;"><strong>Subject:</strong> ${subject}</p>
           </div>
           <p>Our team will review your request shortly.</p>

@@ -1252,7 +1252,7 @@ async function startServer() {
           if (ticket.caller && ticket.caller.includes('@')) {
             await OmniChannelEngine.sendEmail(
               ticket.caller,
-              `[TK-${ticket.ticket_number.replace('INC', '')}] Ticket Status Updated`,
+              `[${ticket.ticket_number}] Ticket Status Updated`,
               `<div style="font-family: sans-serif; padding: 20px;">
                 <h2 style="color: #2563eb;">Status Update</h2>
                 <p>Hello,</p>
@@ -1280,7 +1280,7 @@ async function startServer() {
           if (assignedAgent.length > 0 && assignedAgent[0].email) {
             await OmniChannelEngine.sendEmail(
               assignedAgent[0].email,
-              `[TK-${ticket.ticket_number.replace('INC', '')}] New Ticket Assigned`,
+              `[${ticket.ticket_number}] New Ticket Assigned`,
               `<div style="font-family: sans-serif; padding: 20px;">
                 <h2 style="color: #2563eb;">New Assignment</h2>
                 <p>A new ticket has been assigned to you.</p>
@@ -1564,17 +1564,17 @@ async function startServer() {
               await OmniChannelEngine.sendEmailByConfig(
                 config,
                 ticket.caller,
-                `[TK-${cleanNum}] Update: ${ticket.title}`,
+                `[${ticketNum}] Update: ${ticket.title}`,
                 `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                   <h2 style="color: #2563eb;">${config.company_name} Support</h2>
                   <p>Hello,</p>
-                  <p>A new update has been added to your support ticket <strong>TK-${cleanNum}</strong>.</p>
+                  <p>A new update has been added to your support ticket <strong>${ticketNum}</strong>.</p>
                   <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px solid #e2e8f0; white-space: pre-wrap;">
                     ${message.trim()}
                   </div>
                   <p style="font-size: 14px; color: #64748b;">You can reply to this email to add more information to your ticket.</p>
                   <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                  <p style="font-size: 11px; color: #94a3b8;">Ref ID: [TK-${cleanNum}] | Message sent via ${config.email_address}</p>
+                  <p style="font-size: 11px; color: #94a3b8;">Ref ID: [${ticketNum}] | Message sent via ${config.email_address}</p>
                 </div>`
               );
             }
