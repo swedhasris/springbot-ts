@@ -213,17 +213,130 @@ export function transformSpeechToProfessionalEnglish(raw: string): string {
   if (!raw || !raw.trim()) return "";
 
   const text = raw.trim();
+  const lowerText = text.toLowerCase();
 
-  // 1. Check exact training matches first
+  // 1. Stage 2 Rule: Check exact training matches first
   for (const match of EXACT_MATCHES) {
     for (const pattern of match.patterns) {
-      if (pattern.test(text)) {
+      if (pattern.test(lowerText) || pattern.test(text)) {
         return match.translation;
       }
     }
   }
 
-  // 2. Dynamic NLP Parsing for Action + panna mudiyala
+  // 2. Intent-Based Contextual Translation Engine (Handles natural mixed speech gracefully)
+  
+  // A. Check for Lockout actions (lock, locked, aagiduchu)
+  if (lowerText.includes("lock") || lowerText.includes("locked")) {
+    if (lowerText.includes("user") || lowerText.includes("account") || lowerText.includes("profile")) {
+      return "The user account has been locked.";
+    }
+    return "The system account has been locked.";
+  }
+
+  // B. Check for Not Receiving (varala, varalai, illa, illai, missing, not received)
+  const isMissingOrNotReceived = lowerText.includes("varala") || lowerText.includes("varalai") || lowerText.includes("varavillai") || lowerText.includes("kedaikala") || lowerText.includes("kedaiyathu");
+  if (isMissingOrNotReceived) {
+    if (lowerText.includes("password") || lowerText.includes("reset") || lowerText.includes("passward")) {
+      return "I am not receiving the password reset email.";
+    }
+    if (lowerText.includes("notification") || lowerText.includes("mail") || lowerText.includes("email")) {
+      return "I am not receiving email notifications.";
+    }
+    if (lowerText.includes("otp") || lowerText.includes("code") || lowerText.includes("verification")) {
+      return "I am not receiving the verification code.";
+    }
+  }
+
+  // C. Check for Unable to do something (mudiyala, mudiyavillai, mudiyathu)
+  const isUnable = lowerText.includes("mudiyala") || lowerText.includes("mudiyavillai") || lowerText.includes("mudiyathu");
+  if (isUnable) {
+    if (lowerText.includes("login") || lowerText.includes("log in") || lowerText.includes("signin") || lowerText.includes("sign in")) {
+      return "I am unable to log in.";
+    }
+    if (lowerText.includes("upload")) {
+      return "I am unable to upload the file.";
+    }
+    if (lowerText.includes("download")) {
+      return "I am unable to download the file.";
+    }
+    if (lowerText.includes("reset") || lowerText.includes("password") || lowerText.includes("passward")) {
+      return "I am unable to reset my password.";
+    }
+    if (lowerText.includes("create") || lowerText.includes("ticket")) {
+      return "I am unable to create a ticket.";
+    }
+    if (lowerText.includes("print") || lowerText.includes("printer")) {
+      return "I am unable to print.";
+    }
+    if (lowerText.includes("open") || lowerText.includes("load") || lowerText.includes("dashboard")) {
+      return "I am unable to load the dashboard.";
+    }
+    if (lowerText.includes("access") || lowerText.includes("connect")) {
+      return "I am unable to access the system.";
+    }
+  }
+
+  // D. Check for Slowness & Timeouts (slow, time edukuthu, neram)
+  const isSlowResponse = lowerText.includes("slow") || lowerText.includes("time") || lowerText.includes("neram") || lowerText.includes("loading");
+  if (isSlowResponse) {
+    if (lowerText.includes("dashboard") || lowerText.includes("load") || lowerText.includes("loading")) {
+      return "The dashboard is taking too long to load.";
+    }
+    if (lowerText.includes("server")) {
+      return "The server is very slow.";
+    }
+    if (lowerText.includes("internet") || lowerText.includes("network") || lowerText.includes("wifi") || lowerText.includes("connection")) {
+      return "The network connection is very slow.";
+    }
+    if (lowerText.includes("system") || lowerText.includes("pc") || lowerText.includes("computer")) {
+      return "The system is running very slowly.";
+    }
+  }
+
+  // E. Check for Errors & Failures (error, issue, problem, prachana, prachanai, sikkal)
+  const isFailOrError = lowerText.includes("error") || lowerText.includes("issue") || lowerText.includes("problem") || lowerText.includes("prachana") || lowerText.includes("prachanai") || lowerText.includes("sikkal");
+  if (isFailOrError) {
+    if (lowerText.includes("create") || lowerText.includes("ticket")) {
+      return "I am getting an error while creating the ticket.";
+    }
+    if (lowerText.includes("generate") || lowerText.includes("report")) {
+      return "I am facing an issue while generating the report.";
+    }
+    if (lowerText.includes("login") || lowerText.includes("log in")) {
+      return "I am getting an error during login.";
+    }
+    if (lowerText.includes("load") || lowerText.includes("loading") || lowerText.includes("dashboard")) {
+      return "I am facing an issue loading the dashboard.";
+    }
+    return "I am experiencing an issue with the system.";
+  }
+
+  // F. Check for Not Working (work aagala, velai seiyala, aagala, work agala)
+  const isBroken = lowerText.includes("work") || lowerText.includes("velai") || lowerText.includes("aagala") || lowerText.includes("aakala");
+  if (isBroken) {
+    if (lowerText.includes("vpn")) {
+      return "The VPN connection is not working.";
+    }
+    if (lowerText.includes("wifi") || lowerText.includes("internet")) {
+      return "The Wi-Fi connection is not working.";
+    }
+    if (lowerText.includes("printer")) {
+      return "The printer is not working.";
+    }
+    if (lowerText.includes("mouse")) {
+      return "The mouse is not working.";
+    }
+    if (lowerText.includes("keyboard")) {
+      return "The keyboard is not working.";
+    }
+    if (lowerText.includes("headset") || lowerText.includes("mic") || lowerText.includes("microphone")) {
+      return "The microphone is not working.";
+    }
+    return "The system is not working correctly.";
+  }
+
+  // 3. Regex Dynamic Replacements as NLP parsing fallback
   const pannaMudiyalaMatch = text.match(/(\w+)\s+panna\s+mudiyala/i);
   if (pannaMudiyalaMatch) {
     const action = pannaMudiyalaMatch[1].toLowerCase();
@@ -231,7 +344,6 @@ export function transformSpeechToProfessionalEnglish(raw: string): string {
     return `I am unable to ${mappedAction}.`;
   }
 
-  // 3. Dynamic NLP Parsing for Action + pannumbothu error varuthu
   const errorVaruthuMatch = text.match(/(\w+)\s+pannumbothu\s+error\s+varuthu/i) || text.match(/(\w+)\s+pannumpothu\s+error\s+varuthu/i);
   if (errorVaruthuMatch) {
     const action = errorVaruthuMatch[1].toLowerCase();
@@ -239,7 +351,6 @@ export function transformSpeechToProfessionalEnglish(raw: string): string {
     return `I am getting an error while ${verbIng} the ticket.`;
   }
 
-  // 4. Dynamic NLP Parsing for Action + pannumbothu issue varuthu
   const issueVaruthuMatch = text.match(/(\w+)\s+pannumbothu\s+issue\s+varuthu/i) || text.match(/(\w+)\s+pannumpothu\s+issue\s+varuthu/i);
   if (issueVaruthuMatch) {
     const action = issueVaruthuMatch[1].toLowerCase();
@@ -247,45 +358,37 @@ export function transformSpeechToProfessionalEnglish(raw: string): string {
     return `I am facing an issue while ${verbIng} the report.`;
   }
 
-  // 5. Fallback phrase dictionary loop
+  // 4. Token-based word replacements fallback (only for simple sentences)
   let processed = text;
   for (const [pattern, replacement] of PHRASE_PATTERNS) {
     processed = processed.replace(pattern, replacement);
   }
 
-  // 6. Token-based Translation (for individual words)
   const words = processed.split(/(\s+)/);
   const translatedWords = words.map(part => {
     if (/^\s+$/.test(part)) return part;
-    
-    // Remove punctuation for lookup
     const wordOnly = part.replace(/[.,!?;:]/g, "").toLowerCase();
     const punctuation = part.replace(/[^.,!?;:]/g, "");
     
     if (Object.prototype.hasOwnProperty.call(DICTIONARY, wordOnly)) {
       return DICTIONARY[wordOnly] + punctuation;
     }
-    
-    // If it's already English (mostly ASCII), keep it
     if (/^[a-zA-Z0-9'-]+$/.test(wordOnly)) {
       return part;
     }
-    
-    return part;
+    return ""; // Drop residues that are pure Tamil unicode and untranslatable to avoid mixed text output
   });
 
   processed = translatedWords.join("");
 
-  // 7. Final Grammar & Cleanup
   return postProcessEnglish(processed);
 }
 
 function postProcessEnglish(text: string): string {
-  // Remove non-ASCII characters (like residue Tamil words)
   let s = text.replace(/[^\x00-\x7F]/g, ""); 
   s = s.replace(/\s+/g, " ").trim();
 
-  // Grammar Fixes
+  // Clean raw pronouns and incorrect syntax residues
   s = s.replace(/\bi unable to\b/gi, "I am unable to");
   s = s.replace(/\bi unable\b/gi, "I am unable");
   s = s.replace(/\bi am unable to login\b/gi, "I am unable to log in");
@@ -294,20 +397,19 @@ function postProcessEnglish(text: string): string {
   s = s.replace(/\bi getting\b/gi, "I am getting");
   s = s.replace(/\bthe server very slow\b/gi, "The server is very slow");
   s = s.replace(/\bthe system very slow\b/gi, "The system is very slow");
-  s = s.replace(/\bnot working\b/gi, "is not working");
-  s = s.replace(/\bis not working\s+is not working\b/gi, "is not working");
   
+  // Clean dangling prefixes
+  s = s.replace(/^I\s+(the|a|an)\b/i, "The");
+  s = s.replace(/^I\s+is\b/i, "It is");
+
   // Articles
   s = s.replace(/\ba ([aeiouAEIOU])/g, "an $1");
   s = s.replace(/\ban ([^aeiouAEIOU\s])/g, "a $1");
   
   // Deduplication
   s = s.replace(/\b(\w+)\s+\1\b/gi, "$1");
-  
-  // Cleanup punctuation
   s = s.replace(/\s+([.,!?;:])/g, "$1");
   
-  // Capitalization
   if (s.length > 0) {
     s = s.charAt(0).toUpperCase() + s.slice(1);
     if (!/[.!?]$/.test(s)) s += ".";
