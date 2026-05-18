@@ -636,26 +636,28 @@ export function Tickets() {
           <p className="text-muted-foreground">Manage and track IT support requests.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="destructive"
-            className="font-bold"
-            onClick={async () => {
-              if (!window.confirm("Delete ALL tickets permanently?")) return;
-              try {
-                const snap = await getDocs(collection(db, "tickets"));
-                for (const d of snap.docs) {
-                  await deleteDoc(doc(db, "tickets", d.id));
+          {profile?.role === "ultra_super_admin" && (
+            <Button
+              variant="destructive"
+              className="font-bold"
+              onClick={async () => {
+                if (!window.confirm("Delete ALL tickets permanently?")) return;
+                try {
+                  const snap = await getDocs(collection(db, "tickets"));
+                  for (const d of snap.docs) {
+                    await deleteDoc(doc(db, "tickets", d.id));
+                  }
+                  alert("Cleaned " + snap.size + " tickets from Firestore.");
+                  // Also call SQL delete via API
+                  await fetch("/api/tickets/all", { method: "DELETE" }).catch(() => {});
+                } catch (e) {
+                  alert(e.message);
                 }
-                alert("Cleaned " + snap.size + " tickets from Firestore.");
-                // Also call SQL delete via API
-                await fetch("/api/tickets/all", { method: "DELETE" }).catch(() => {});
-              } catch (e) {
-                alert(e.message);
-              }
-            }}
-          >
-            <Trash2 className="w-4 h-4 mr-2" /> Delete All
-          </Button>
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> Delete All
+            </Button>
+          )}
           <Button onClick={() => openModal()} className="bg-sn-green text-sn-dark font-bold">
             <Plus className="w-4 h-4 mr-2" /> Create Ticket
           </Button>
