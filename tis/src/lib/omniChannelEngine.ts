@@ -57,12 +57,27 @@ export class OmniChannelEngine {
     
     try {
       // 1. Fetch all active configs
-      const configs = await query("SELECT * FROM company_email_configs WHERE is_active = 1");
+      let configs = await query("SELECT * FROM company_email_configs WHERE is_active = 1");
       
       if (configs.length === 0) {
-        console.log('[OmniChannel] No active email configurations found. Falling back to env defaults.');
-        // Optional: Keep existing ENV fallback if you want
-        return;
+        console.log('[OmniChannel] No active database configs. Falling back to Support@technosprint.net from .env...');
+        if (process.env.IMAP_USER && process.env.IMAP_PASS) {
+          configs = [{
+            id: 'env_fallback',
+            company_name: 'Technosprint',
+            email_address: process.env.IMAP_USER,
+            imap_host: process.env.IMAP_HOST,
+            imap_port: parseInt(process.env.IMAP_PORT || '993'),
+            imap_user: process.env.IMAP_USER,
+            imap_pass: process.env.IMAP_PASS,
+            smtp_host: process.env.SMTP_HOST,
+            smtp_port: parseInt(process.env.SMTP_PORT || '465'),
+            smtp_user: process.env.SMTP_USER,
+            smtp_pass: process.env.SMTP_PASS
+          }];
+        } else {
+          return;
+        }
       }
 
       for (const config of configs) {
