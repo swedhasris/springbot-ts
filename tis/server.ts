@@ -3687,13 +3687,15 @@ Respond with ONLY a JSON object: {"note": "your note here"}`;
         - OUTPUT ALWAYS exactly one clean English sentence. No explanations, no raw text, no debug/intro text.
         
         EXAMPLES:
+        "எனக்கு லாகின் பண்ண முடியல" -> "I am unable to log in."
         "Enaku login panna mudiyala" -> "I am unable to log in."
+        "டிக்கெட் கிரியேட் பண்ணும்போது எரர் வருது" -> "I am getting an error while creating the ticket."
         "Ticket create pannumbothu error varuthu" -> "I am getting an error while creating the ticket."
-        "Mail notification varala" -> "I am not receiving email notifications."
+        "மெயில் நோட்டிபிகேஷன் வரல" -> "I am not receiving email notifications."
         "Server romba slow ah iruku" -> "The server is very slow."
-        "User account lock aagiduchu" -> "The user account has been locked."
         "Dashboard load aaga romba time edukuthu" -> "The dashboard is taking too long to load."
-        "Password reset panna mail varala" -> "I am not receiving the password reset email."
+        "File upload panna mudiyala" -> "I am unable to upload the file."
+        "System work panna maatinguthu" -> "The system is not working properly."
         
         Input Text: "${text}"
       `;
