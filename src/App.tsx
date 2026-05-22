@@ -16,6 +16,10 @@ import { ROLE_HIERARCHY, Role } from "./lib/roles";
 // Lazy loaded components
 const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
 const Tickets = lazy(() => import("./pages/Tickets").then(m => ({ default: m.Tickets })));
+const Timesheet = lazy(() => import("./pages/Timesheet").then(m => ({ default: m.Timesheet })));
+const TimesheetWeekly = lazy(() => import("./pages/TimesheetWeekly").then(m => ({ default: m.TimesheetWeekly })));
+const TimesheetReports = lazy(() => import("./pages/TimesheetReports").then(m => ({ default: m.TimesheetReports })));
+
 const TicketDetail = lazy(() => import("./pages/TicketDetail").then(m => ({ default: m.TicketDetail })));
 const GlobalHistory = lazy(() => import("./pages/GlobalHistory").then(m => ({ default: m.GlobalHistory })));
 const SLAManagement = lazy(() => import("./pages/SLAManagement").then(m => ({ default: m.SLAManagement })));
@@ -23,19 +27,17 @@ const Approvals = lazy(() => import("./pages/Approvals").then(m => ({ default: m
 const Users = lazy(() => import("./pages/Users").then(m => ({ default: m.Users })));
 const Reports = lazy(() => import("./pages/Reports").then(m => ({ default: m.Reports })));
 const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
-const ServiceCatalog = lazy(() => import("./pages/ServiceCatalog").then(m => ({ default: m.ServiceCatalog })));
+const EmailIntegrations = lazy(() => import("./pages/EmailIntegrations").then(m => ({ default: m.EmailIntegrations })));
+const MyDashboard = lazy(() => import("./pages/MyDashboard").then(m => ({ default: m.MyDashboard })));
+const Register = lazy(() => import("./pages/Register").then(m => ({ default: m.Register })));
 const CMDB = lazy(() => import("./pages/CMDB").then(m => ({ default: m.CMDB })));
 const Conversations = lazy(() => import("./pages/Conversations").then(m => ({ default: m.Conversations })));
 const ProblemManagement = lazy(() => import("./pages/ProblemManagement").then(m => ({ default: m.ProblemManagement })));
 const ChangeManagement = lazy(() => import("./pages/ChangeManagement").then(m => ({ default: m.ChangeManagement })));
 const KnowledgeBase = lazy(() => import("./pages/KnowledgeBase").then(m => ({ default: m.KnowledgeBase })));
 const ServicePortal = lazy(() => import("./pages/ServicePortal").then(m => ({ default: m.ServicePortal })));
-const PersonalDashboard = lazy(() => import("./pages/PersonalDashboard").then(m => ({ default: m.PersonalDashboard })));
+const ServiceCatalog = lazy(() => import("./pages/ServiceCatalog").then(m => ({ default: m.ServiceCatalog })));
 const Login = lazy(() => import("./pages/Login").then(m => ({ default: m.Login })));
-const Register = lazy(() => import("./pages/Register").then(m => ({ default: m.Register })));
-const Timesheet = lazy(() => import("./pages/Timesheet").then(m => ({ default: m.Timesheet })));
-const TimesheetWeekly = lazy(() => import("./pages/TimesheetWeekly").then(m => ({ default: m.TimesheetWeekly })));
-const TimesheetReports = lazy(() => import("./pages/TimesheetReports").then(m => ({ default: m.TimesheetReports })));
 const Calendar = lazy(() => import("./pages/Calendar").then(m => ({ default: m.Calendar })));
 const AccessControl = lazy(() => import("./pages/AccessControl").then(m => ({ default: m.AccessControl })));
 const Leaderboard = lazy(() => import("./pages/Leaderboard").then(m => ({ default: m.Leaderboard })));
@@ -46,6 +48,7 @@ const Groups = lazy(() => import("./pages/Groups").then(m => ({ default: m.Group
 const ClearUsers = lazy(() => import("./pages/ClearUsers").then(m => ({ default: m.ClearUsers })));
 const BrandingSettings = lazy(() => import("./pages/BrandingSettings").then(m => ({ default: m.BrandingSettings })));
 const ActivityTracker = lazy(() => import("./pages/ActivityTracker").then(m => ({ default: m.ActivityTracker })));
+const DataAnalytics = lazy(() => import("./pages/DataAnalytics").then(m => ({ default: m.DataAnalytics })));
 
 function LoadingScreen() {
   return (
@@ -84,13 +87,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   );
 }
 
-function HomeRedirect() {
-  const { profile, loading } = useAuth();
-  if (loading) return <LoadingScreen />;
-
-  const isAgent = ROLE_HIERARCHY[profile?.role as Role] >= ROLE_HIERARCHY["agent"];
-  return isAgent ? <Dashboard /> : <ServicePortal />;
-}
+  function HomeRedirect() {
+    const { loading } = useAuth();
+    if (loading) return <LoadingScreen />;
+    return <Navigate to="/my-dashboard" />;
+  }
 
 export default function App() {
   return (
@@ -127,10 +128,10 @@ function AppBody() {
             }
           />
           <Route
-            path="/personal-dashboard"
+            path="/my-dashboard"
             element={
               <ProtectedRoute>
-                <PersonalDashboard />
+                <MyDashboard />
               </ProtectedRoute>
             }
           />
@@ -271,22 +272,6 @@ function AppBody() {
             }
           />
           <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/timesheet/approvals"
-            element={
-              <ProtectedRoute>
-                <TimesheetApprovals />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/calendar"
             element={
               <ProtectedRoute>
@@ -359,6 +344,14 @@ function AppBody() {
             }
           />
           <Route
+            path="/email-integrations"
+            element={
+              <ProtectedRoute>
+                <EmailIntegrations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/branding"
             element={
               <ProtectedRoute>
@@ -367,10 +360,26 @@ function AppBody() {
             }
           />
           <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/activity-tracker"
             element={
               <ProtectedRoute>
                 <ActivityTracker />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/data-analytics"
+            element={
+              <ProtectedRoute>
+                <DataAnalytics />
               </ProtectedRoute>
             }
           />

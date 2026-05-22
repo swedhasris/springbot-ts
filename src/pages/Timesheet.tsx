@@ -56,8 +56,12 @@ function formatTimeFromSeconds(seconds: number): string {
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
-function formatDate(d: Date): string { return d.toISOString().split("T")[0]; }
+function formatDate(d: Date): string {
+  if (!d || isNaN(d.getTime())) return "—";
+  return d.toISOString().split("T")[0];
+}
 function formatTimestamp(d: Date): string {
+  if (!d || isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-US", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
 }
 function nowTimeStr(): string {
@@ -299,10 +303,16 @@ export function Timesheet() {
     calculateDuration(startTime, endTime);
   }, [startTime, endTime]);
 
-  /* ── Firestore load ── */
   const monday = getMonday(new Date());
-  const weekStart = urlWeekStart || formatDate(monday);
-  const weekEnd = formatDate(new Date(new Date(weekStart).getTime() + 6 * 86400000));
+  let parsedWeekStart = urlWeekStart || formatDate(monday);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(parsedWeekStart)) {
+    parsedWeekStart = formatDate(monday);
+  }
+  const weekStart = parsedWeekStart;
+  const startMs = new Date(weekStart).getTime();
+  const weekEnd = isNaN(startMs)
+    ? formatDate(new Date(monday.getTime() + 6 * 86400000))
+    : formatDate(new Date(startMs + 6 * 86400000));
 
   useEffect(() => { loadData(); }, [user, weekStart]);
   useEffect(() => { if (user) loadMessageHistory(); }, [user]);

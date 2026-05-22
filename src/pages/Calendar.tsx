@@ -46,7 +46,10 @@ function getMonday(date: Date): Date {
   d.setHours(0, 0, 0, 0);
   return d;
 }
-function formatDate(d: Date): string { return d.toISOString().split("T")[0]; }
+function formatDate(d: Date): string {
+  if (!d || isNaN(d.getTime())) return "—";
+  return d.toISOString().split("T")[0];
+}
 
 function parseTimeToHour(timeStr: string): number | null {
   if (!timeStr) return null;

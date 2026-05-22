@@ -27,6 +27,7 @@ function getMonday(date: Date): Date {
 }
 
 function formatDate(d: Date): string {
+  if (!d || isNaN(d.getTime())) return "—";
   return d.toISOString().split("T")[0];
 }
 
@@ -353,7 +354,11 @@ export function TimesheetWeekly() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="text-sm font-medium block mb-1">Date</label>
-                <input type="text" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} disabled className="w-full p-2 bg-muted/30 border border-border rounded text-sm" />
+                <input type="text" value={(() => {
+                  if (!selectedDate) return "—";
+                  const d = new Date(selectedDate + "T12:00:00");
+                  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+                })()} disabled className="w-full p-2 bg-muted/30 border border-border rounded text-sm" />
               </div>
               <div>
                 <label className="text-sm font-medium block mb-1">Task <span className="text-red-500">*</span></label>

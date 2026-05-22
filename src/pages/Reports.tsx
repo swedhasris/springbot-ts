@@ -4,7 +4,7 @@ import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { ROLE_HIERARCHY, Role } from "../lib/roles";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Map, AlertTriangle, ArrowUpRight, Zap, Shield, Users, Activity, CheckCircle2, Clock, Briefcase } from "lucide-react";
+import { Map as IconMap, AlertTriangle, ArrowUpRight, Zap, Shield, Users, Activity, CheckCircle2, Clock, Briefcase, ClipboardList } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -789,7 +789,7 @@ export function Reports() {
       }
     );
     return unsubscribe;
-  }, []);
+  }, [user?.uid, profile?.role]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -974,7 +974,7 @@ export function Reports() {
         <div className="sn-card lg:col-span-2">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
-              <Map className="w-5 h-5 text-red-600" />
+              <IconMap className="w-5 h-5 text-red-600" />
             </div>
             <div>
               <h3 className="text-lg font-bold">Critical Incidents Map</h3>

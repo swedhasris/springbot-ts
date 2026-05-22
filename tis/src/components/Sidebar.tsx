@@ -85,7 +85,6 @@ export function Sidebar() {
       label: "Favorites",
       items: [
         { icon: LayoutDashboard, label: profile?.role === 'user' ? "Service Portal" : "Incident Dashboard", path: "/" },
-        { icon: BarChart3, label: "Personal Dashboard", path: "/personal-dashboard" },
         { icon: Trophy, label: "Leaderboard", path: "/leaderboard" },
         { icon: CalendarDays, label: "Calendar", path: "/calendar" },
         { icon: Ticket, label: "My Tickets", path: "/timesheet" },

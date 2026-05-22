@@ -18,7 +18,8 @@ async function seedAllRoles() {
     { email: "ulter@technosprint.net", name: "Super Admin", role: "super_admin", uid: "prod_super_admin_fixed" },
     { email: "admin@technosprint.net", name: "Administrator", role: "admin", uid: "prod_admin_fixed" },
     { email: "subadmin@technosprint.net", name: "Sub Admin", role: "sub_admin", uid: "prod_sub_admin_fixed" },
-    { email: "agent@technosprint.net", name: "Support Agent", role: "agent", uid: "prod_agent_fixed" }
+    { email: "agent@technosprint.net", name: "Support Agent", role: "agent", uid: "prod_agent_fixed" },
+    { email: "user@technosprint.net", name: "Demo User", role: "user", uid: "prod_user_fixed" }
   ];
   
   const password = "Password123!";

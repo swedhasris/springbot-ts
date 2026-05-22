@@ -93,22 +93,30 @@ export function ActivityTimeline({ ticketId, createdAt, refreshTrigger = 0, user
 
   const formatDate = (date: any) => {
     if (!date) return "-";
-    if (typeof date === "string") {
-      const d = new Date(date);
-      const now = new Date();
-      const diffMs = now.getTime() - d.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
+    try {
+      if (typeof date === "string") {
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return "-";
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
 
-      if (diffMins < 1) return "Just now";
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      return d.toLocaleString('en-US', {
-        month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-        hour: '2-digit', minute: '2-digit'
-      });
+        if (diffMins < 1) return "Just now";
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        return d.toLocaleString('en-US', {
+          month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+          hour: '2-digit', minute: '2-digit'
+        });
+      }
+      if (date.seconds !== undefined) {
+        const d = new Date(Number(date.seconds) * 1000);
+        return isNaN(d.getTime()) ? "-" : d.toLocaleString();
+      }
+    } catch (e) {
+      return "-";
     }
-    if (date.seconds) return new Date(date.seconds * 1000).toLocaleString();
     return "-";
   };
 

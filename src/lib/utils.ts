@@ -7,14 +7,19 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDate(date: any): string {
   if (!date) return "—";
-  if (date?.seconds) {
-    return new Date(date.seconds * 1000).toLocaleDateString();
+  try {
+    if (typeof date === "object" && date.seconds !== undefined) {
+      const ms = Number(date.seconds) * 1000;
+      if (isNaN(ms)) return "—";
+      const d = new Date(ms);
+      return isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+    }
+    if (date instanceof Date) {
+      return isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
+    }
+    const d = new Date(date);
+    return isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+  } catch (e) {
+    return "—";
   }
-  if (typeof date === "string") {
-    return new Date(date).toLocaleDateString();
-  }
-  if (date instanceof Date) {
-    return date.toLocaleDateString();
-  }
-  return "—";
 }

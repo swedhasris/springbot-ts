@@ -745,9 +745,22 @@ export function TicketDetail() {
 
   const formatDate = (date: any) => {
     if (!date) return "-";
-    if (typeof date.toDate === "function") return date.toDate().toLocaleString();
-    if (typeof date === "string") return new Date(date).toLocaleString();
-    if (date.seconds) return new Date(date.seconds * 1000).toLocaleString();
+    try {
+      if (typeof date.toDate === "function") {
+        const d = date.toDate();
+        return isNaN(d.getTime()) ? "-" : d.toLocaleString();
+      }
+      if (typeof date === "string") {
+        const d = new Date(date);
+        return isNaN(d.getTime()) ? "-" : d.toLocaleString();
+      }
+      if (date.seconds !== undefined) {
+        const d = new Date(Number(date.seconds) * 1000);
+        return isNaN(d.getTime()) ? "-" : d.toLocaleString();
+      }
+    } catch (e) {
+      return "-";
+    }
     return "-";
   };
 

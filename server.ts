@@ -63,6 +63,7 @@ async function getSQLiteDb() {
         phone TEXT,
         password_hash TEXT,
         is_active INTEGER DEFAULT 1,
+        last_login DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS tickets (
@@ -91,6 +92,8 @@ async function getSQLiteDb() {
         resolved_at DATETIME,
         response_sla_status TEXT,
         resolution_sla_status TEXT,
+        response_sla_start_time DATETIME,
+        resolution_sla_start_time DATETIME,
         created_by TEXT,
         created_by_name TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -189,6 +192,15 @@ async function getSQLiteDb() {
     `);
     // Migrate: add screenshot_url column if missing (safe to re-run)
     try { await sqliteDb.exec("ALTER TABLE timesheets ADD COLUMN screenshot_url TEXT;"); } catch (e) {}
+    try {
+      await sqliteDb.exec("ALTER TABLE tickets ADD COLUMN response_sla_start_time DATETIME");
+    } catch (e) {}
+    try {
+      await sqliteDb.exec("ALTER TABLE tickets ADD COLUMN resolution_sla_start_time DATETIME");
+    } catch (e) {}
+    try {
+      await sqliteDb.exec("ALTER TABLE users ADD COLUMN last_login DATETIME");
+    } catch (e) {}
     // Ensure tables have latest columns
     try {
       await sqliteDb.exec("ALTER TABLE activity_entries ADD COLUMN keystrokes INTEGER DEFAULT 0");
@@ -384,7 +396,7 @@ cron.schedule("*/15 * * * *", () => {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 3005;
 
   app.use(express.json());
 
@@ -1011,7 +1023,7 @@ async function startServer() {
         return 'h_' + Math.abs(hash).toString(36) + '_' + str.length;
       }
 
-      const users = await query("SELECT * FROM users WHERE email = ? AND is_active = TRUE", [email.toLowerCase().trim()]);
+      const users = await query("SELECT * FROM users WHERE email = ? AND is_active = 1", [email.toLowerCase().trim()]);
 
       if (users.length === 0) {
         return res.status(401).json({ error: "Invalid email or password" });

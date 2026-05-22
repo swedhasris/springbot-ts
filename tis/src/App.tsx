@@ -15,7 +15,7 @@ import { ROLE_HIERARCHY, Role } from "./lib/roles";
 
 // Lazy loaded components
 const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
-const PersonalDashboard = lazy(() => import("./pages/PersonalDashboard").then(m => ({ default: m.PersonalDashboard })));
+
 const Tickets = lazy(() => import("./pages/Tickets").then(m => ({ default: m.Tickets })));
 const TicketDetail = lazy(() => import("./pages/TicketDetail").then(m => ({ default: m.TicketDetail })));
 const GlobalHistory = lazy(() => import("./pages/GlobalHistory").then(m => ({ default: m.GlobalHistory })));
@@ -121,14 +121,6 @@ function AppBody() {
             element={
               <ProtectedRoute>
                 <HomeRedirect />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/personal-dashboard"
-            element={
-              <ProtectedRoute>
-                <PersonalDashboard />
               </ProtectedRoute>
             }
           />
@@ -301,19 +293,6 @@ function AppBody() {
             }
           />
           <Route
-            path="/leaderboard"
-            element={
-              <ProtectedRoute>
-                <Leaderboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/approved-tickets"
-            element={
-              <ProtectedRoute>
-                <ApprovedTickets />
-              </ProtectedRoute>
             }
           />
           <Route

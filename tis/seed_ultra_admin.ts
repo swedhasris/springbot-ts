@@ -13,16 +13,18 @@ function simpleHash(str: string): string {
 async function seedAdmin() {
   const accounts = [
     { email: "ultrasuperadmin@technosprint.net", name: "Ultra Super Admin" },
-    { email: "ulter@technosprint.net", name: "Ulter Super Admin" }
+    { email: "ulter@technosprint.net", name: "Ulter Super Admin" },
+    { email: "arun@technosprint.net", name: "Arun", password: "Poland@01" }
   ];
   
-  const password = "Password123!";
+  const defaultPassword = "Password123!";
   const role = "ultra_super_admin";
-  const passHash = simpleHash(password);
 
   console.log("Starting database seeding...");
 
   for (const acc of accounts) {
+    const password = acc.password || defaultPassword;
+    const passHash = simpleHash(password);
     console.log(`Seeding user: ${acc.email}`);
     try {
       const existing = await query("SELECT id FROM users WHERE email = ?", [acc.email]);
@@ -48,6 +50,7 @@ async function seedAdmin() {
   console.log("\n-------------------------------------------");
   console.log("LOGIN CREDENTIALS (ULTRA SUPER ADMIN):");
   for (const acc of accounts) {
+    const password = acc.password || defaultPassword;
     console.log(`Email: ${acc.email}`);
     console.log(`Password: ${password}`);
     console.log(`Role: ${role}`);

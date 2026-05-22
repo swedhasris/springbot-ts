@@ -1511,6 +1511,7 @@ async function startServer() {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
+      console.log(`[Login] Attempt: ${email}`);
 
       // Simple hash function (same as frontend)
       function simpleHash(str: string): string {
@@ -1523,22 +1524,29 @@ async function startServer() {
         return 'h_' + Math.abs(hash).toString(36) + '_' + str.length;
       }
 
-      const users = await query("SELECT * FROM users WHERE email = ? AND is_active = 1", [email.toLowerCase().trim()]);
-
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log(`[Login] Normalized email: ${normalizedEmail}`);
+      const users = await query("SELECT * FROM users WHERE email = ? AND is_active = 1", [normalizedEmail]);
+      console.log(`[Login] Query result count: ${users.length}`);
 
       if (users.length === 0) {
+        console.log(`[Login] User not found or not active`);
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
       const user = users[0];
+      const calculatedHash = simpleHash(password);
+      console.log(`[Login] Password hash match: stored="${user.password_hash}" calculated="${calculatedHash}"`);
 
-      if (user.password_hash && user.password_hash !== simpleHash(password)) {
+      if (user.password_hash && user.password_hash !== calculatedHash) {
+        console.log(`[Login] Password mismatch`);
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
       // Update last login
       await execute("UPDATE users SET last_login = ? WHERE id = ?", [formatDate(new Date()), user.id]);
 
+      console.log(`[Login] Success for ${email}`);
       res.json({
         id: user.id.toString(),
         uid: user.uid,

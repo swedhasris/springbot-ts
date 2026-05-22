@@ -69,7 +69,15 @@ export function Sidebar() {
   const isDarkMode = resolvedTheme === "dark";
   const [expandedSections, setExpandedSections] = useState<string[]>(() => {
     const saved = localStorage.getItem("sn-sidebar-expanded");
-    return saved ? JSON.parse(saved) : ["Favorites", "Incident"];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Auto-expand "Data Analytics" for existing users who don't have it yet
+      if (!parsed.includes("Data Analytics")) {
+        parsed.push("Data Analytics");
+      }
+      return parsed;
+    }
+    return ["Favorites", "Incident", "Data Analytics"];
   });
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -83,8 +91,7 @@ export function Sidebar() {
       label: "Favorites",
       items: profile?.role === "user"
         ? [
-            { icon: LayoutDashboard, label: "Service Portal", path: "/" },
-            { icon: LayoutDashboard, label: "Personal Dashboard", path: "/personal-dashboard" },
+            { icon: LayoutDashboard, label: "Personal Dashboard", path: "/my-dashboard" },
             { icon: Trophy, label: "Leaderboard", path: "/leaderboard" },
             { icon: CalendarDays, label: "Calendar", path: "/calendar" },
             { icon: Ticket, label: "My Tickets", path: "/timesheet" },
@@ -99,6 +106,13 @@ export function Sidebar() {
             { icon: BarChart2, label: "Timesheet Reports", path: "/timesheet/reports" },
             { icon: Monitor, label: "AI Activity Tracker", path: "/activity-tracker" },
           ]
+    },
+    {
+      label: "Email Integration",
+      ultraSuperAdminOnly: true,
+      items: [
+        { icon: Settings, label: "Email Integration", path: "/email-integrations" },
+      ]
     },
     {
       label: "Companies",
@@ -133,6 +147,13 @@ export function Sidebar() {
       items: [
         { icon: AlertOctagon, label: "Problem Management", path: "/problem" },
         { icon: GitPullRequest, label: "Change Management", path: "/change" },
+      ]
+    },
+    {
+      label: "Data Analytics",
+      adminOnly: true,
+      items: [
+        { icon: BarChart3, label: "Data Analytics", path: "/data-analytics" },
       ]
     },
     {

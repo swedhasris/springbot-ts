@@ -38,15 +38,18 @@ interface ActivityTrackerContextType {
 const ActivityTrackerContext = createContext<ActivityTrackerContextType | undefined>(undefined);
 
 function getWeekMonday(d: string) {
-  const dt = new Date(d + 'T12:00:00');
+  const dt = new Date((d || "").includes("T") ? d : (d + "T12:00:00"));
+  if (isNaN(dt.getTime())) return new Date().toISOString().split("T")[0];
   const day = dt.getDay();
   dt.setDate(dt.getDate() - day + (day === 0 ? -6 : 1));
-  return dt.toISOString().split('T')[0];
+  return dt.toISOString().split("T")[0];
 }
 function getWeekSunday(d: string) {
-  const m = new Date(getWeekMonday(d) + 'T12:00:00');
+  const mondayStr = getWeekMonday(d);
+  const m = new Date(mondayStr + "T12:00:00");
+  if (isNaN(m.getTime())) return new Date().toISOString().split("T")[0];
   m.setDate(m.getDate() + 6);
-  return m.toISOString().split('T')[0];
+  return m.toISOString().split("T")[0];
 }
 
 export function ActivityTrackerProvider({ children }: { children: React.ReactNode }) {
