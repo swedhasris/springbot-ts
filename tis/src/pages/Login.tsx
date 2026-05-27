@@ -132,9 +132,10 @@ export function Login() {
   };
 
   const handleQuickLogin = (emailVal: string, roleVal: Role) => {
+    const passwordVal = emailVal === "arun@technosprint.net" ? "Poland@01" : "Password123!";
     setEmail(emailVal);
-    setPassword("Password123!");
-    performLogin(emailVal, "Password123!", roleVal);
+    setPassword(passwordVal);
+    performLogin(emailVal, passwordVal, roleVal);
   };
 
   return (

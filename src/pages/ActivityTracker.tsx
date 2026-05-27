@@ -267,6 +267,7 @@ export function ActivityTracker() {
 
 
   const isActive = status === 'active';
+  const canConfigureSettings = profile && !["user", "agent", "sub_admin"].includes(profile.role);
 
   /* ── Auto-scroll ── */
   useEffect(() => { feedEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [entries]);
@@ -336,13 +337,15 @@ export function ActivityTracker() {
               Detects apps, captures screenshots, generates AI descriptions, updates timesheet automatically.
             </p>
           </div>
-          <button onClick={() => setShowSettings(s => !s)} className="p-2 rounded-lg hover:bg-muted transition-colors">
-            <Settings className="w-5 h-5 text-muted-foreground" />
-          </button>
+          {canConfigureSettings && (
+            <button onClick={() => setShowSettings(s => !s)} className="p-2 rounded-lg hover:bg-muted transition-colors">
+              <Settings className="w-5 h-5 text-muted-foreground" />
+            </button>
+          )}
         </div>
 
         {/* Settings */}
-        {showSettings && (
+        {showSettings && canConfigureSettings && (
           <div className="bg-white border border-border rounded-xl p-5 shadow-sm space-y-4">
             <div>
               <h3 className="text-sm font-bold mb-3">Snapshot interval</h3>

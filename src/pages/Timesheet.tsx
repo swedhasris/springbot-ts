@@ -102,19 +102,28 @@ function parseTimeStr(timeStr: string): Date | null {
 }
 
 /* ─── Collapsible Section ─── */
-function Section({ title, icon, defaultOpen = true, headerRight, accentColor, children }: {
+function Section({ title, icon, defaultOpen = true, isOpen, onToggle, headerRight, accentColor, children }: {
   title: string; icon?: React.ReactNode; defaultOpen?: boolean;
+  isOpen?: boolean; onToggle?: () => void;
   headerRight?: React.ReactNode; accentColor?: string; children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const open = isOpen !== undefined ? isOpen : internalOpen;
+  const toggle = () => {
+    if (onToggle) {
+      onToggle();
+    } else {
+      setInternalOpen(!internalOpen);
+    }
+  };
   return (
     <div className="border border-border rounded-lg bg-white shadow-sm overflow-hidden">
       <div
-        onClick={() => setOpen(!open)}
+        onClick={toggle}
         className="w-full flex items-center justify-between px-5 py-3 bg-white hover:bg-muted/20 transition-colors cursor-pointer select-none"
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); } }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
       >
         <div className="flex items-center gap-2">
           {icon}
@@ -188,6 +197,13 @@ export function Timesheet() {
   const [timesheet, setTimesheet] = useState<any>(null);
   const [timeCards, setTimeCards] = useState<any[]>([]);
   const [editingCard, setEditingCard] = useState<any>(null);
+
+  // Collapsible sections state
+  const [openTicketsOpen, setOpenTicketsOpen] = useState(true);
+  const [timeDetailsOpen, setTimeDetailsOpen] = useState(true);
+  const [sendEmailOpen, setSendEmailOpen] = useState(false);
+  const [sendWhatsAppOpen, setSendWhatsAppOpen] = useState(false);
+  const [messageHistoryOpen, setMessageHistoryOpen] = useState(false);
 
   // Active timer state
   const [activeTimer, setActiveTimer] = useState<any>(null);
@@ -466,11 +482,56 @@ export function Timesheet() {
       resetTimeFields();
       await loadData();
       alert("Time entry saved successfully!");
+      navigate(-1);
     } catch (e: any) {
       console.error("[Timesheet] Save failed:", e);
       alert(`Failed to save time entry: ${e.message}`);
     }
     setSaving(false);
+  }
+
+  async function saveAsDraft() {
+    if (!timesheet) return;
+    if (!confirm("Save this timesheet as Draft?")) return;
+    try {
+      const res = await fetch(`/api/timesheets/${timesheet.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: "Draft" })
+      });
+      if (!res.ok) throw new Error(`Save as Draft failed: ${res.status}`);
+      alert("Timesheet saved as Draft!");
+      await loadData();
+    } catch (e: any) {
+      console.error("[Timesheet] Draft save failed:", e);
+      alert(`Failed to save as draft: ${e.message}`);
+    }
+  }
+
+  async function handleRefreshPage() {
+    await Promise.all([loadData(), loadMessageHistory()]);
+  }
+
+  function copyCurrentEntry() {
+    if (editingCard) {
+      setEditingCard(null);
+      alert("Time entry copied! Click 'Save & Return' to save as a new entry.");
+    } else if (startTime || notesContent || shortDescription) {
+      setEditingCard(null);
+      alert("Time entry copied! Click 'Save & Return' to save as a new entry.");
+    } else {
+      alert("No time card details populated to copy.");
+    }
+  }
+
+  async function handleDeleteTopAction() {
+    if (editingCard) {
+      await deleteEntry(editingCard.id);
+      resetTimeFields();
+      setEditingCard(null);
+    } else {
+      alert("Please select a saved time entry from the list below to edit/delete.");
+    }
   }
 
   function resetTimeFields() {
@@ -530,12 +591,17 @@ export function Timesheet() {
 
   function handleSendWhatsApp() {
     const phone = waCountryCode.replace("+", "") + waPhone.replace(/\D/g, "");
-    const msg = encodeURIComponent(waMessage);
+    
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = waMessage;
+    const cleanMsg = tempDiv.textContent || tempDiv.innerText || waMessage;
+
+    const msg = encodeURIComponent(cleanMsg);
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
 
     // Save to history
     const recipient = `${waCountryCode} ${waPhone}`;
-    saveMessageHistory("whatsapp", recipient, waMessage);
+    saveMessageHistory("whatsapp", recipient, cleanMsg);
   }
 
   async function saveMessageHistory(type: "email" | "whatsapp", recipient: string, content: string) {
@@ -570,14 +636,18 @@ export function Timesheet() {
   }
 
   function handleSendEmail() {
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = notesContent || waMessage;
+    const cleanBody = tempDiv.textContent || tempDiv.innerText || notesContent || waMessage;
+
     // Build mailto link
     const subject = encodeURIComponent(`Timesheet Notes — ${entryDate}`);
-    const body = encodeURIComponent(notesContent || waMessage);
+    const body = encodeURIComponent(cleanBody);
     window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
 
     // Save to history
     const recipient = emailContactName || emailFrom || "Contact";
-    saveMessageHistory("email", recipient, notesContent || waMessage);
+    saveMessageHistory("email", recipient, cleanBody);
   }
 
   async function pasteFromClipboard(target: "email" | "whatsapp") {
@@ -661,13 +731,18 @@ export function Timesheet() {
       {/* ═══ TOP ACTION BAR ═══ */}
       <div className="flex items-center justify-between bg-white p-3 border border-border rounded-lg shadow-sm">
         <div className="flex items-center gap-3">
-          <Link to="/timesheet/weekly" className="p-1.5 hover:bg-muted rounded transition-colors" title="Back to Weekly View">
+          <button 
+            type="button"
+            onClick={() => navigate(-1)} 
+            className="p-1.5 hover:bg-muted rounded transition-colors" 
+            title="Back to Previous Page"
+          >
             <ChevronRight className="w-4 h-4 rotate-180" />
-          </Link>
-          <button className="p-1.5 hover:bg-muted rounded transition-colors" title="New"><Plus className="w-4 h-4" /></button>
-          <button className="p-1.5 hover:bg-muted rounded transition-colors" title="Copy"><Copy className="w-4 h-4" /></button>
-          <button className="p-1.5 hover:bg-muted rounded transition-colors" title="Print"><Printer className="w-4 h-4" /></button>
-          <button className="p-1.5 hover:bg-muted rounded transition-colors" title="Refresh" onClick={() => loadData()}><RefreshCw className="w-4 h-4" /></button>
+          </button>
+          <button onClick={() => { resetTimeFields(); setEditingCard(null); setTimeDetailsOpen(true); }} className="p-1.5 hover:bg-muted rounded transition-colors" title="New"><Plus className="w-4 h-4" /></button>
+          <button onClick={copyCurrentEntry} className="p-1.5 hover:bg-muted rounded transition-colors" title="Copy"><Copy className="w-4 h-4" /></button>
+          <button onClick={() => window.print()} className="p-1.5 hover:bg-muted rounded transition-colors" title="Print"><Printer className="w-4 h-4" /></button>
+          <button className="p-1.5 hover:bg-muted rounded transition-colors" title="Refresh" onClick={handleRefreshPage}><RefreshCw className="w-4 h-4" /></button>
           <button
             onClick={saveEntry}
             disabled={saving || !canEdit}
@@ -677,16 +752,36 @@ export function Timesheet() {
           </button>
           <div className="flex items-center gap-1 text-sm text-muted-foreground">
             <History className="w-4 h-4" />
-            <select className="bg-transparent border-none outline-none text-sm cursor-pointer">
-              <option>History</option>
+            <select 
+              className="bg-transparent border-none outline-none text-sm cursor-pointer"
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val || val === "History") return;
+                const found = msgHistory.find(h => String(h.id) === val);
+                if (found) {
+                  alert(`Message History Detail:\nType: ${found.message_type === "whatsapp" ? "WhatsApp" : "Email"}\nRecipient: ${found.recipient}\nSent: ${new Date(found.sent_at).toLocaleString()}\n\nContent:\n${found.message_content}`);
+                }
+                e.target.value = "History";
+              }}
+            >
+              <option value="History">History</option>
+              {msgHistory.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.message_type === "whatsapp" ? "WA" : "Email"} - {h.recipient} ({new Date(h.sent_at).toLocaleDateString()})
+                </option>
+              ))}
             </select>
           </div>
-          <button className="p-1.5 hover:bg-muted rounded transition-colors" title="Delete"><Trash2 className="w-4 h-4 text-red-500" /></button>
+          <button onClick={handleDeleteTopAction} className="p-1.5 hover:bg-muted rounded transition-colors" title="Delete"><Trash2 className="w-4 h-4 text-red-500" /></button>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[timesheet?.status] || STATUS_COLORS.Draft}`}>
+          <button
+            type="button"
+            onClick={saveAsDraft}
+            className={`px-3 py-1 rounded-full text-xs font-semibold hover:opacity-95 active:scale-95 transition-all ${STATUS_COLORS[timesheet?.status] || STATUS_COLORS.Draft}`}
+          >
             {timesheet?.status || "Draft"}
-          </span>
+          </button>
           {canEdit && (
             <button onClick={submitTimesheet} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded font-semibold text-sm hover:bg-blue-700 transition-colors">
               <Send className="w-4 h-4" /> Submit
@@ -698,7 +793,12 @@ export function Timesheet() {
 
 
       {/* ═══ OPEN TICKETS SECTION ═══ */}
-      <Section title="Open Tickets" icon={<Ticket className="w-4 h-4" />} defaultOpen={true}>
+      <Section 
+        title="Open Tickets" 
+        icon={<Ticket className="w-4 h-4" />} 
+        isOpen={openTicketsOpen} 
+        onToggle={() => setOpenTicketsOpen(!openTicketsOpen)}
+      >
         <div className="p-5">
           {ticketsLoading ? (
             <div className="flex items-center justify-center py-8">
@@ -753,7 +853,8 @@ export function Timesheet() {
       {/* ═══ TIME DETAILS SECTION ═══ */}
       <Section
         title="Time Details"
-        defaultOpen={true}
+        isOpen={timeDetailsOpen}
+        onToggle={() => setTimeDetailsOpen(!timeDetailsOpen)}
         headerRight={
           canEdit ? (
             <button
@@ -872,7 +973,18 @@ export function Timesheet() {
               </div>
 
               {/* Add Internal Time Note */}
-              <button className="text-sm font-bold text-sn-dark hover:underline">
+              <button 
+                type="button"
+                onClick={() => {
+                  setNoteInternal(true);
+                  if (editorRef.current) {
+                    const current = editorRef.current.innerHTML || "";
+                    editorRef.current.innerHTML = current + " [Internal Note]: ";
+                    setNotesContent(editorRef.current.innerHTML);
+                  }
+                }}
+                className="text-sm font-bold text-sn-dark hover:underline"
+              >
                 Add Internal Time Note
               </button>
 
@@ -967,7 +1079,12 @@ export function Timesheet() {
 
 
       {/* ═══ SEND NOTES AS EMAIL ═══ */}
-      <Section title="Send Notes as Email" icon={<Mail className="w-4 h-4 text-blue-600" />} defaultOpen={false}>
+      <Section 
+        title="Send Notes as Email" 
+        icon={<Mail className="w-4 h-4 text-blue-600" />} 
+        isOpen={sendEmailOpen} 
+        onToggle={() => setSendEmailOpen(!sendEmailOpen)}
+      >
         <div className="p-5 space-y-3">
           <div className="grid grid-cols-6 items-center gap-3">
             <label className="text-xs text-muted-foreground font-medium col-span-1">From:</label>
@@ -1055,7 +1172,8 @@ export function Timesheet() {
         title="Send Notes as WhatsApp"
         icon={<MessageCircle className="w-4 h-4 text-[#25D366]" />}
         accentColor="text-[#25D366]"
-        defaultOpen={false}
+        isOpen={sendWhatsAppOpen}
+        onToggle={() => setSendWhatsAppOpen(!sendWhatsAppOpen)}
       >
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-6 items-center gap-3">
@@ -1144,7 +1262,12 @@ export function Timesheet() {
         title="Message History"
         icon={<History className="w-4 h-4 text-purple-600" />}
         accentColor="text-purple-600"
-        defaultOpen={false}
+        isOpen={messageHistoryOpen}
+        onToggle={() => {
+          const next = !messageHistoryOpen;
+          setMessageHistoryOpen(next);
+          if (next) loadMessageHistory();
+        }}
         headerRight={
           <button
             onClick={(e) => { e.stopPropagation(); loadMessageHistory(); }}

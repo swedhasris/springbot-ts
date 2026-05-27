@@ -247,6 +247,10 @@ export function Tickets() {
     };
 
     if (filter === "assigned_to_me" && t.assignedTo !== user?.uid && t.assignedTo !== profile?.name && t.assignedToName !== profile?.name) return false;
+    if (filter === "created_by_me" && t.createdBy !== user?.uid) return false;
+    if (filter === "in_progress" && t.status !== "In Progress") return false;
+    if (filter === "closed" && t.status !== "Closed") return false;
+    if (filter === "pending" && t.status !== "Pending" && t.status !== "On Hold") return false;
     if (filter === "open" && (t.status === "Resolved" || t.status === "Closed" || t.status === "Canceled")) return false;
     if (filter === "unassigned" && t.assignedTo) return false;
     if (filter === "resolved" && t.status !== "Resolved" && t.status !== "Closed") return false;

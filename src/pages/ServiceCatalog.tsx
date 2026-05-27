@@ -50,6 +50,65 @@ export function ServiceCatalog() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
+  // Dynamic Catalog state
+  const [catalogSections, setCatalogSections] = useState(CATALOG_ITEMS);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Edit Catalog modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+
+    setCatalogSections(prev => prev.map(section => {
+      if (section.category === editingItem.category) {
+        return {
+          ...section,
+          items: section.items.map(item => {
+            if (item.id === editingItem.id) {
+              return {
+                ...item,
+                name: editName,
+                description: editDescription,
+                price: editPrice
+              };
+            }
+            return item;
+          })
+        };
+      }
+      return section;
+    }));
+
+    setIsEditModalOpen(false);
+    setEditingItem(null);
+  };
+
+  const handleDelete = (itemId: string, category: string) => {
+    setCatalogSections(prev => prev.map(section => {
+      if (section.category === category) {
+        return {
+          ...section,
+          items: section.items.filter(item => item.id !== itemId)
+        };
+      }
+      return section;
+    }));
+  };
+
+  const filteredCatalog = catalogSections.map(section => {
+    const items = section.items.filter(item => 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.description.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    return { ...section, items };
+  }).filter(section => section.items.length > 0);
+
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !selectedItem) return;
@@ -99,13 +158,15 @@ export function ServiceCatalog() {
           <input 
             type="text"
             placeholder="Search catalog..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-white border border-border rounded-lg py-2 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-sn-green"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        {CATALOG_ITEMS.map((section) => (
+        {filteredCatalog.map((section) => (
           <div key={section.category} className="space-y-4">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground border-b border-border pb-2">
               {section.category}
@@ -135,13 +196,19 @@ export function ServiceCatalog() {
                         <>
                           <button onClick={e => {
                             e.stopPropagation();
-                            alert("Edit catalog item coming soon!");
+                            setEditingItem({ ...item, category: section.category });
+                            setEditName(item.name);
+                            setEditDescription(item.description);
+                            setEditPrice(item.price);
+                            setIsEditModalOpen(true);
                           }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded transition-colors" title="Edit Item">
                             <Edit className="w-4 h-4" />
                           </button>
                           <button onClick={e => {
                             e.stopPropagation();
-                            alert("Delete catalog item coming soon!");
+                            if (confirm(`Are you sure you want to delete ${item.name}?`)) {
+                              handleDelete(item.id, section.category);
+                            }
                           }} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors" title="Delete Item">
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -213,6 +280,55 @@ export function ServiceCatalog() {
                 </form>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
+              <h2 className="font-bold text-sn-dark">Edit Catalog Item</h2>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Item Name</label>
+                <input 
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full p-2.5 border border-border rounded-lg text-sm focus:ring-1 focus:ring-sn-green outline-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <textarea 
+                  required
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full p-2.5 border border-border rounded-lg text-sm focus:ring-1 focus:ring-sn-green outline-none min-h-[80px] resize-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Price / Frequency</label>
+                <input 
+                  type="text"
+                  required
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                  className="w-full p-2.5 border border-border rounded-lg text-sm focus:ring-1 focus:ring-sn-green outline-none"
+                />
+              </div>
+              <Button 
+                type="submit" 
+                className="w-full bg-sn-green text-sn-dark font-bold py-6 mt-4"
+              >
+                Save Changes
+              </Button>
+            </form>
           </div>
         </div>
       )}

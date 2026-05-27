@@ -54,13 +54,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
             const freshData = docSnap.data();
-            setProfile(freshData);
+            
+            // Prevent Firestore from downgrading a higher role established by local database
+            const localRole = (sessionUser.role || "user") as Role;
+            const freshRole = (freshData.role || "user") as Role;
+            const finalRole = (ROLE_HIERARCHY[freshRole] >= ROLE_HIERARCHY[localRole]) ? freshRole : localRole;
+
+            setProfile({
+              ...sessionUser,
+              ...freshData,
+              role: finalRole
+            });
+            
             // Update localStorage to stay in sync
             localStorage.setItem('demo_user', JSON.stringify({
               uid: freshData.uid || sessionUser.uid,
               name: freshData.name || sessionUser.name,
               email: freshData.email || sessionUser.email,
-              role: freshData.role || sessionUser.role,
+              role: finalRole,
               phone: freshData.phone || ""
             }));
           }
