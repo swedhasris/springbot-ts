@@ -18,10 +18,10 @@ function toMs(val: any): number {
 import { SLATimer } from "../components/SLATimer";
 
 const PRIORITY_COLORS: Record<string, string> = {
-  "1 - Critical": "#e74c3c",
-  "2 - High": "#f39c12",
-  "3 - Moderate": "#27ae60",
-  "4 - Low": "#3498db",
+  "1 - Critical": "#ef4444", // Neon Red
+  "2 - High": "#f59e0b",     // Neon Amber
+  "3 - Moderate": "#10b981", // Neon Emerald
+  "4 - Low": "#06b6d4",      // Neon Cyan
 };
 
 export function Dashboard() {
@@ -115,22 +115,28 @@ export function Dashboard() {
   };
 
   const statCards = [
-    { label: "Critical Open Incidents", value: criticalOpen, color: "text-red-500 font-bold", link: "/tickets?filter=critical_open" },
-    { label: "Unassigned Incidents", value: unassigned, color: "text-foreground", link: "/tickets?filter=unassigned" },
-    { label: "Overdue Incidents", value: overdue, color: "text-red-600 font-black", link: "/tickets?filter=overdue" },
-    { label: "Open Incidents", value: openCount, color: "text-foreground", link: "/tickets?filter=open" },
-    { label: "Incidents not updated for 7 days", value: stale7, color: "text-foreground", link: "/tickets?filter=stale_7" },
-    { label: "Open Incidents older than 30 Days", value: older30, color: "text-foreground", link: "/tickets?filter=older_30" },
+    { label: "Critical Open Incidents", value: criticalOpen, color: "text-red-500 font-bold dark:text-red-400", link: "/tickets?filter=critical_open" },
+    { label: "Unassigned Incidents", value: unassigned, color: "text-foreground dark:text-slate-300", link: "/tickets?filter=unassigned" },
+    { label: "Overdue Incidents", value: overdue, color: "text-rose-600 font-black dark:text-rose-400", link: "/tickets?filter=overdue" },
+    { label: "Open Incidents", value: openCount, color: "text-foreground dark:text-slate-300", link: "/tickets?filter=open" },
+    { label: "Incidents not updated for 7 days", value: stale7, color: "text-foreground dark:text-slate-300", link: "/tickets?filter=stale_7" },
+    { label: "Open Incidents older than 30 Days", value: older30, color: "text-foreground dark:text-slate-300", link: "/tickets?filter=older_30" },
   ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between pb-3 border-b border-border">
-        <h1 className="text-lg font-bold text-foreground">Incident Overview</h1>
-        <div className="flex items-center gap-2">
+    <div className="space-y-6 max-w-7xl mx-auto font-outfit">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-5">
+        <div>
+          <h1 className="text-3xl font-black bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent tracking-tight">
+            Security Control Center
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">Real-time incident streams, executive indicators & global performance telemetry.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setLastRefresh(new Date())}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded text-xs font-medium hover:bg-muted transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-border/60 hover:border-cyan-500/30 rounded-xl text-xs font-bold bg-muted/20 hover:bg-white/5 dark:bg-white/5 transition-colors cursor-pointer text-foreground"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Refresh
@@ -138,39 +144,41 @@ export function Dashboard() {
           <button 
             onClick={() => setLayout(prev => prev === 'standard' ? 'compact' : 'standard')}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs font-medium transition-all",
-              layout === 'compact' ? "bg-sn-green/10 border-sn-green text-sn-dark" : "border-border hover:bg-muted"
+              "flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-xs font-bold transition-all cursor-pointer",
+              layout === 'compact'
+                ? "bg-cyan-500/15 border-cyan-500/25 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+                : "border-border/60 hover:border-purple-500/30 hover:bg-white/5 text-foreground"
             )}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             {layout === 'standard' ? 'Compact Layout' : 'Standard Layout'}
           </button>
-          <span className="text-[10px] text-muted-foreground">
-            Last updated: {lastRefresh.toLocaleTimeString()}
+          <span className="text-[10px] text-muted-foreground font-orbitron self-center">
+            SYNC: {lastRefresh.toLocaleTimeString()}
           </span>
         </div>
       </div>
 
       <div className={cn("grid gap-6", layout === 'compact' ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1")}>
         <div className={cn(
-          "bg-white border border-border rounded-lg shadow-sm overflow-hidden h-fit",
+          "glass-panel rounded-2xl border border-border/80 shadow-2xl overflow-hidden h-fit p-1 bg-card/60 backdrop-blur-md",
           layout === 'compact' ? "md:col-span-1" : "grid grid-cols-1"
         )}>
-          <div className={cn("grid divide-border", layout === 'compact' ? "grid-cols-1 divide-y" : "grid-cols-3 divide-x")}>
+          <div className={cn("grid divide-border/40", layout === 'compact' ? "grid-cols-1 divide-y" : "grid-cols-3 divide-x")}>
             {statCards.slice(0, 3).map((s, i) => (
-              <Link key={i} to={s.link} className={cn("p-6 text-center hover:bg-muted/10 transition-colors group", layout === 'compact' && "p-4")}>
-                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">{s.label}</div>
-                <div className={cn("font-light transition-transform inline-block", s.color, layout === 'compact' ? "text-3xl" : "text-5xl")}>
+              <Link key={i} to={s.link} className={cn("p-6 text-center hover:bg-cyan-500/5 transition-colors group", layout === 'compact' && "p-4")}>
+                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2.5 font-outfit">{s.label}</div>
+                <div className={cn("font-orbitron font-bold transition-transform inline-block", s.color, layout === 'compact' ? "text-3xl" : "text-4xl")}>
                   {loading ? "—" : s.value}
                 </div>
               </Link>
             ))}
           </div>
-          <div className={cn("grid divide-border border-t border-border", layout === 'compact' ? "grid-cols-1 divide-y" : "grid-cols-3 divide-x")}>
+          <div className={cn("grid divide-border/40 border-t border-border/40", layout === 'compact' ? "grid-cols-1 divide-y" : "grid-cols-3 divide-x")}>
             {statCards.slice(3, 6).map((s, i) => (
-              <Link key={i} to={s.link} className={cn("p-6 text-center hover:bg-muted/10 transition-colors group", layout === 'compact' && "p-4")}>
-                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">{s.label}</div>
-                <div className={cn("font-light transition-transform inline-block", s.color, layout === 'compact' ? "text-3xl" : "text-5xl")}>
+              <Link key={i} to={s.link} className={cn("p-6 text-center hover:bg-cyan-500/5 transition-colors group", layout === 'compact' && "p-4")}>
+                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2.5 font-outfit">{s.label}</div>
+                <div className={cn("font-orbitron font-bold transition-transform inline-block", s.color, layout === 'compact' ? "text-3xl" : "text-4xl")}>
                   {loading ? "—" : s.value}
                 </div>
               </Link>
@@ -179,15 +187,28 @@ export function Dashboard() {
         </div>
 
         <div className={cn("grid gap-6", layout === 'compact' ? "md:col-span-2 grid-cols-1" : "grid-cols-1 md:grid-cols-2")}>
-          <div className="bg-white border border-border rounded-lg shadow-sm p-5 h-full">
-            <h3 className="text-[11px] font-black uppercase tracking-widest text-foreground mb-4">Open Incidents — Grouped by Priority</h3>
+          <div className="glass-panel rounded-2xl border border-border/80 p-5 h-full shadow-2xl">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-foreground font-outfit mb-4">Open Incidents — Grouped by Priority</h3>
             <div className={cn("transition-all duration-500", layout === 'compact' ? "h-40" : "h-56")}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={priorityGroups} layout="vertical" margin={{ left: 0, right: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" fontSize={10} allowDecimals={false} />
-                  <YAxis type="category" dataKey="label" fontSize={9} width={90} />
-                  <Tooltip formatter={(v: any) => [v, "Tickets"]} contentStyle={{ fontSize: 10, borderRadius: 8, border: 'none' }} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148, 163, 184, 0.15)" />
+                  <XAxis type="number" fontSize={9} allowDecimals={false} stroke="#94a3b8" style={{ fontFamily: "Orbitron, sans-serif" }} />
+                  <YAxis type="category" dataKey="label" fontSize={9} width={90} stroke="#94a3b8" style={{ fontFamily: "Outfit, sans-serif" }} />
+                  <Tooltip 
+                    formatter={(v: any) => [v, "Tickets"]}
+                    contentStyle={{
+                      backgroundColor: "rgba(9, 10, 21, 0.85)",
+                      backdropFilter: "blur(12px)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: "12px",
+                      fontSize: "11px",
+                      color: "#ffffff",
+                      fontFamily: "Outfit, sans-serif",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.25)",
+                    }}
+                    itemStyle={{ color: "#ffffff" }}
+                  />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                     {priorityGroups.map((entry, i) => (
                       <Cell key={i} fill={PRIORITY_COLORS[entry.label] || "#64748b"} />
@@ -198,15 +219,28 @@ export function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-white border border-border rounded-lg shadow-sm p-5 h-full">
-            <h3 className="text-[11px] font-black uppercase tracking-widest text-foreground mb-4">Open Incidents older than 30 Days</h3>
+          <div className="glass-panel rounded-2xl border border-border/80 p-5 h-full shadow-2xl">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-foreground font-outfit mb-4">Open Incidents older than 30 Days</h3>
             <div className={cn("transition-all duration-500", layout === 'compact' ? "h-40" : "h-56")}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={older30Groups} layout="vertical" margin={{ left: 0, right: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" fontSize={10} allowDecimals={false} />
-                  <YAxis type="category" dataKey="label" fontSize={9} width={90} />
-                  <Tooltip formatter={(v: any) => [v, "Tickets"]} contentStyle={{ fontSize: 10, borderRadius: 8, border: 'none' }} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148, 163, 184, 0.15)" />
+                  <XAxis type="number" fontSize={9} allowDecimals={false} stroke="#94a3b8" style={{ fontFamily: "Orbitron, sans-serif" }} />
+                  <YAxis type="category" dataKey="label" fontSize={9} width={90} stroke="#94a3b8" style={{ fontFamily: "Outfit, sans-serif" }} />
+                  <Tooltip 
+                    formatter={(v: any) => [v, "Tickets"]}
+                    contentStyle={{
+                      backgroundColor: "rgba(9, 10, 21, 0.85)",
+                      backdropFilter: "blur(12px)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: "12px",
+                      fontSize: "11px",
+                      color: "#ffffff",
+                      fontFamily: "Outfit, sans-serif",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.25)",
+                    }}
+                    itemStyle={{ color: "#ffffff" }}
+                  />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                     {older30Groups.map((entry, i) => (
                       <Cell key={i} fill={PRIORITY_COLORS[entry.label] || "#64748b"} />
@@ -220,35 +254,36 @@ export function Dashboard() {
       </div>
 
       {/* Advanced SLA Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: "Total SLAs", value: slaStats.total, color: "text-slate-600", icon: Clock },
-          { label: "SLA Completed %", value: `${slaStats.completedPct}%`, color: "text-emerald-600", icon: CheckCircle2 },
-          { label: "Breached SLA %", value: `${slaStats.breachedPct}%`, color: "text-red-600", icon: ShieldAlert },
-          { label: "Avg Resolution", value: `${slaStats.avgResTime}h`, color: "text-blue-600", icon: Clock },
-          { label: "Near Breach", value: slaStats.nearBreach, color: "text-orange-500", icon: AlertCircle }
+          { label: "Total SLAs", value: slaStats.total, color: "text-slate-600 dark:text-slate-400", icon: Clock },
+          { label: "SLA Completed %", value: `${slaStats.completedPct}%`, color: "text-emerald-600 dark:text-emerald-400", icon: CheckCircle2 },
+          { label: "Breached SLA %", value: `${slaStats.breachedPct}%`, color: "text-rose-600 dark:text-rose-400", icon: ShieldAlert },
+          { label: "Avg Resolution", value: `${slaStats.avgResTime}h`, color: "text-blue-600 dark:text-blue-400", icon: Clock },
+          { label: "Near Breach", value: slaStats.nearBreach, color: "text-amber-500 dark:text-amber-400", icon: AlertCircle }
         ].map((s, i) => (
-          <div key={i} className="bg-white border border-border rounded-xl p-4 shadow-sm flex items-center gap-4 group hover:border-sn-green/30 transition-all hover:shadow-md">
-            <div className={cn("p-2.5 rounded-lg bg-muted/30 group-hover:bg-muted transition-colors")}>
+          <div key={i} className="glass-panel border border-border/80 rounded-2xl p-4 shadow-xl flex items-center gap-4 group hover:border-cyan-500/30 transition-all hover:shadow-2xl">
+            <div className="p-2.5 rounded-xl bg-black/20 group-hover:bg-black/35 border border-white/5 transition-colors">
               <s.icon className={cn("w-4 h-4", s.color)} />
             </div>
             <div>
-              <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{s.label}</div>
-              <div className={cn("text-xl font-bold tracking-tight", s.color)}>{loading ? "—" : s.value}</div>
+              <div className="text-[8px] font-black uppercase tracking-widest text-muted-foreground font-outfit mb-1">{s.label}</div>
+              <div className={cn("text-lg font-bold tracking-tight font-orbitron", s.color)}>{loading ? "—" : s.value}</div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="bg-white border border-border rounded-lg shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between bg-muted/10">
-          <h3 className="text-sm font-bold">Recent Incidents</h3>
-          <Link to="/tickets" className="text-xs text-blue-600 hover:underline font-medium uppercase tracking-widest">View All Incidents</Link>
+      {/* Recent Incidents Table */}
+      <div className="glass-panel rounded-2xl border border-border/80 shadow-2xl overflow-hidden bg-card/60 backdrop-blur-md">
+        <div className="p-4 border-b border-border/40 flex items-center justify-between bg-muted/20 backdrop-blur-md">
+          <h3 className="text-xs font-black uppercase tracking-wider text-foreground font-outfit">Operations Incident Feed</h3>
+          <Link to="/tickets" className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold uppercase tracking-widest font-outfit">View All Incidents</Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-muted/30 border-b border-border text-[10px] font-bold uppercase text-muted-foreground tracking-wide">
+              <tr className="bg-muted/10 border-b border-border/40 text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                 <th className="p-3">Number</th>
                 <th className="p-3">Short Description</th>
                 <th className="p-3">Priority</th>
@@ -259,39 +294,39 @@ export function Dashboard() {
                 <th className="p-3">Created</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/30 font-outfit">
               {loading ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground text-sm">Loading...</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground text-xs">Fetching incident records...</td></tr>
               ) : recent.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground text-sm">No incidents found.</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground text-xs">No incidents found.</td></tr>
               ) : recent.map(t => {
                 const p = t.priority ?? "4 - Low";
-                const pColor = p.includes("Critical") ? "bg-red-600 text-white"
-                  : p.includes("High") ? "bg-red-100 text-red-700"
-                    : p.includes("Moderate") ? "bg-orange-100 text-orange-700"
-                      : "bg-blue-100 text-blue-700";
+                const priorityBadge = p.includes("Critical") ? "bg-red-500/10 text-red-500 border border-red-500/20" :
+                  p.includes("High") ? "bg-orange-500/10 text-orange-500 border border-orange-500/20" :
+                    p.includes("Moderate") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+                      "bg-cyan-500/10 text-cyan-500 border border-cyan-500/20";
                 const isPaused = t.status === "On Hold" || t.status === "Waiting for Customer";
 
                 return (
-                  <tr key={t.id} className="border-b border-border hover:bg-muted/5 transition-colors">
+                  <tr key={t.id} className="hover:bg-cyan-500/5 transition-colors">
                     <td className="p-3">
-                      <Link to={`/tickets/${t.id}`} className="font-mono text-[11px] font-bold text-blue-600 hover:underline">
+                      <Link to={`/tickets/${t.id}`} className="font-mono text-xs font-bold text-cyan-400 hover:underline bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded">
                         {t.number ?? t.id.slice(0, 8)}
                       </Link>
                     </td>
-                    <td className="p-3 text-[11px] font-medium max-w-[200px] truncate">{t.title ?? "—"}</td>
+                    <td className="p-3 text-xs font-medium max-w-[200px] truncate text-foreground/90">{t.title ?? "—"}</td>
                     <td className="p-3">
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${pColor}`}>{p}</span>
+                      <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider", priorityBadge)}>{p}</span>
                     </td>
-                    <td className="p-3">
-                      <span className="text-[11px] font-medium">{t.status ?? "New"}</span>
+                    <td className="p-3 text-xs font-semibold text-foreground/80">
+                      {t.status ?? "New"}
                     </td>
-                    <td className="p-3 text-[11px] text-muted-foreground">{t.incidentCategory || t.incident_category || t.category || "—"}</td>
-                    <td className="p-3 text-[11px] font-medium">
+                    <td className="p-3 text-xs text-muted-foreground">{t.incidentCategory || t.incident_category || t.category || "—"}</td>
+                    <td className="p-3 text-xs font-medium">
                       {t.assignedToName || users.find(u => u.id === t.assignedTo)?.name || t.assignedTo || "Unassigned"}
                     </td>
                     <td className="p-3">
-                      <div className="flex flex-col gap-1.5">
+                      <div className="flex flex-col gap-1 bg-black/10 p-1.5 rounded-lg border border-white/5 max-w-[130px]">
                         <SLATimer
                           label="Resp"
                           deadline={t.responseDeadline}
@@ -311,7 +346,7 @@ export function Dashboard() {
                         />
                       </div>
                     </td>
-                    <td className="p-3 text-[11px] text-muted-foreground">
+                    <td className="p-3 text-xs text-muted-foreground font-mono">
                       {formatDate(t.createdAt)}
                     </td>
                   </tr>

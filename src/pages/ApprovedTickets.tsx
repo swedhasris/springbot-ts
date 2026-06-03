@@ -9,24 +9,24 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 const PRIORITY_COLORS: Record<string, string> = {
   "1 - Critical": "bg-red-100 text-red-700",
-  "2 - High":     "bg-orange-100 text-orange-700",
+  "2 - High": "bg-orange-100 text-orange-700",
   "3 - Moderate": "bg-blue-100 text-blue-700",
-  "4 - Low":      "bg-green-100 text-green-700",
+  "4 - Low": "bg-green-100 text-green-700",
 };
 
 const STATUS_COLORS: Record<string, string> = {
   "Resolved": "bg-green-100 text-green-700",
-  "Closed":   "bg-gray-100 text-gray-700",
+  "Closed": "bg-gray-100 text-gray-700",
 };
 
 export function ApprovedTickets() {
   const { user, profile } = useAuth();
-  const [tickets, setTickets]   = useState<any[]>([]);
-  const [agents, setAgents]     = useState<Record<string, any>>({});
-  const [search, setSearch]     = useState("");
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [agents, setAgents] = useState<Record<string, any>>({});
+  const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const [startDate, setStartDate] = useState(() => localStorage.getItem("sn-approved-tickets-start-date") || "");
   const [endDate, setEndDate] = useState(() => localStorage.getItem("sn-approved-tickets-end-date") || "");
@@ -86,7 +86,7 @@ export function ApprovedTickets() {
       const status = t.status || "Resolved";
       const category = t.category || "—";
       const assignedUser = agents[t.assignedTo]?.name || "Unassigned";
-      
+
       let resolvedOn = "—";
       const resolvedVal = t.resolvedAt || t.updatedAt;
       if (resolvedVal) {
@@ -123,7 +123,7 @@ export function ApprovedTickets() {
 
   useEffect(() => {
     if (!user) return;
-    const isAgent = ["agent","admin","super_admin","ultra_super_admin","sub_admin"].includes(profile?.role || "");
+    const isAgent = ["agent", "admin", "super_admin", "ultra_super_admin", "sub_admin"].includes(profile?.role || "");
 
     // Fetch agents for name lookup
     getDocs(collection(db, "users")).then(snap => {
@@ -159,9 +159,9 @@ export function ApprovedTickets() {
       t.title?.toLowerCase().includes(search.toLowerCase()) ||
       t.number?.toLowerCase().includes(search.toLowerCase()) ||
       t.caller?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus   = filterStatus === "all"   || t.status === filterStatus;
+    const matchStatus = filterStatus === "all" || t.status === filterStatus;
     const matchPriority = filterPriority === "all" || t.priority === filterPriority;
-    
+
     if (!(matchSearch && matchStatus && matchPriority)) return false;
 
     const tTime = getRecordTime(t.resolvedAt || t.updatedAt || t.createdAt);
@@ -178,13 +178,13 @@ export function ApprovedTickets() {
   });
 
   const resolvedCount = tickets.filter(t => t.status === "Resolved").length;
-  const closedCount   = tickets.filter(t => t.status === "Closed").length;
+  const closedCount = tickets.filter(t => t.status === "Closed").length;
 
   const priorityBarColors: Record<string, string> = {
     "1 - Critical": "#ef4444",
-    "2 - High":     "#f97316",
+    "2 - High": "#f97316",
     "3 - Moderate": "#3b82f6",
-    "4 - Low":      "#22c55e",
+    "4 - Low": "#22c55e",
   };
 
   const priorityGroups = ["1 - Critical", "2 - High", "3 - Moderate", "4 - Low"].map(p => ({
@@ -356,7 +356,7 @@ export function ApprovedTickets() {
                 </td></tr>
               ) : filtered.map(t => {
                 const priority = t.priority || "4 - Low";
-                const status   = t.status   || "Resolved";
+                const status = t.status || "Resolved";
                 const assignedUser = agents[t.assignedTo] || null;
                 return (
                   <tr key={t.id} className="hover:bg-green-50/30 transition-colors">

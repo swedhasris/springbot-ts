@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Orbitron:wght@500;700;900&family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @plugin "tailwindcss-animate";
@@ -7,6 +7,8 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-outfit: "Outfit", sans-serif;
+  --font-orbitron: "Orbitron", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
   --color-border: hsl(var(--border));
@@ -40,70 +42,76 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
-  /* Connect Inspired Colors */
-  --color-sn-green: #81B532;
-  --color-sn-dark: #0B141A;
-  --color-sn-gray: #F0F3F3;
-  --color-text-dim: #C7D1D6;
-  --color-sn-sidebar: #151B26;
+  /* Connect Inspired Colors - Redesigned to cyber-ops theme */
+  --color-sn-green: #06b6d4; /* Electric Cyan */
+  --color-sn-dark: #02040a;  /* Space Black */
+  --color-sn-gray: #111827;  /* Dark Gray */
+  --color-text-dim: #94a3b8; /* Slate Gray */
+  --color-sn-sidebar: #06070d; /* Translucent Black */
+}
+
+@keyframes gradientAnimation {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 @layer base {
   :root {
     --light-brightness: 97%;
-    --background: 240 15% var(--light-brightness);
+    --background: 240 10% var(--light-brightness);
     --foreground: 240 10% 8%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 8%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 8%;
-    --primary: 84 56% 45%;
+    --primary: 258 90% 66%; /* Electric Violet */
     --primary-foreground: 210 40% 98%;
     --secondary: 240 6% 95%;
     --secondary-foreground: 240 10% 8%;
     --muted: 240 6% 95%;
     --muted-foreground: 240 5% 40%;
-    --accent: 240 6% 95%;
+    --accent: 188 86% 43%; /* Electric Cyan */
     --accent-foreground: 240 10% 8%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 240 6% 86%;
     --input: 240 6% 86%;
-    --ring: 84 56% 45%;
-    --radius: 0.5rem;
+    --ring: 188 86% 43%;
+    --radius: 0.75rem;
   }
 
   .dark {
-    --background: 240 10% 4%;
+    --background: 240 20% 4%;
     --foreground: 0 0% 100%;
-    --card: 240 6% 10%;
+    --card: 240 15% 8%;
     --card-foreground: 240 5% 90%;
-    --popover: 240 6% 10%;
+    --popover: 240 15% 8%;
     --popover-foreground: 0 0% 100%;
-    --primary: 84 56% 45%;
-    --primary-foreground: 240 10% 4%;
-    --secondary: 240 5% 14%;
+    --primary: 258 90% 66%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 10% 14%;
     --secondary-foreground: 0 0% 100%;
-    --muted: 240 5% 14%;
+    --muted: 240 10% 14%;
     --muted-foreground: 240 5% 75%;
-    --accent: 240 5% 14%;
+    --accent: 188 86% 43%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 5% 18%;
-    --input: 240 5% 18%;
-    --ring: 84 56% 45%;
+    --border: 240 10% 16%;
+    --input: 240 10% 16%;
+    --ring: 188 86% 43%;
 
     /* Light color overrides inside dark mode to prevent white patches */
-    --color-white: hsl(240 6% 10%);
-    --color-gray-50: hsl(240 6% 6%);
-    --color-gray-100: hsl(240 5% 12%);
-    --color-gray-200: hsl(240 5% 18%);
-    --color-gray-300: hsl(240 5% 24%);
-    --color-slate-50: hsl(240 6% 6%);
-    --color-slate-100: hsl(240 5% 12%);
-    --color-slate-200: hsl(240 5% 18%);
-    --color-slate-300: hsl(240 5% 24%);
+    --color-white: hsl(240 15% 8%);
+    --color-gray-50: hsl(240 20% 3%);
+    --color-gray-100: hsl(240 15% 6%);
+    --color-gray-200: hsl(240 15% 10%);
+    --color-gray-300: hsl(240 15% 14%);
+    --color-slate-50: hsl(240 20% 3%);
+    --color-slate-100: hsl(240 15% 6%);
+    --color-slate-200: hsl(240 15% 10%);
+    --color-slate-300: hsl(240 15% 14%);
   }
 }
 
@@ -111,26 +119,68 @@
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground font-sans antialiased transition-colors duration-200;
+    @apply text-foreground font-sans antialiased transition-colors duration-200 min-h-screen;
+    background: linear-gradient(-45deg, #f1f5f9, #e0f2fe, #f5f3ff, #faf5ff);
+    background-size: 400% 400%;
+    animation: gradientAnimation 20s ease infinite;
+  }
+
+  .dark body {
+    background: linear-gradient(-45deg, #030712, #07091e, #0c051a, #030712);
+    background-size: 400% 400%;
+    animation: gradientAnimation 20s ease infinite;
   }
 }
 
-/* Technical Dashboard Styles */
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+}
+
+.dark .glass-panel {
+  background: rgba(8, 10, 20, 0.65);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Redesign Technical Dashboard Styles */
 .data-table-header {
-  @apply font-mono text-[11px] uppercase tracking-wider text-muted-foreground italic;
+  @apply font-outfit text-[11px] uppercase tracking-wider text-muted-foreground font-bold;
 }
 
 .data-table-row {
-  @apply border-b border-border hover:bg-muted/50 transition-colors;
+  @apply border-b border-border/60 hover:bg-primary/5 transition-colors;
 }
 
 .sn-card {
-  @apply rounded-lg border bg-card p-6 shadow-sm;
+  @apply rounded-2xl border bg-card/65 backdrop-blur-md p-6 shadow-xl border-border transition-all duration-300;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04);
+}
+
+.dark .sn-card {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+}
+
+.sn-card:hover {
+  border-color: rgba(6, 182, 212, 0.3);
+  box-shadow: 0 12px 30px -5px rgba(6, 182, 212, 0.05);
+}
+
+.dark .sn-card:hover {
+  border-color: rgba(168, 85, 247, 0.3);
+  box-shadow: 0 20px 40px -10px rgba(168, 85, 247, 0.15);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+  height: 6px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -138,15 +188,70 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(168, 85, 247, 0.2);
   border-radius: 10px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(168, 85, 247, 0.4);
 }
 
 .bg-sn-sidebar {
-  background: linear-gradient(180deg, #151B26 0%, #0B141A 100%);
+  background: linear-gradient(180deg, rgba(8, 9, 20, 0.7) 0%, rgba(3, 4, 9, 0.85) 100%);
+  backdrop-filter: blur(20px);
 }
 
+/* Neon Priority Indicators */
+.priority-glow-critical {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+.priority-glow-high {
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.3);
+  border-color: rgba(249, 115, 22, 0.5);
+}
+.priority-glow-moderate {
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+.priority-glow-low {
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+/* Futuristic Inputs */
+.ops-input {
+  @apply bg-background/50 border border-border/80 rounded-xl px-4 py-2.5 text-sm outline-none transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary;
+}
+
+/* Animated status indicator dots */
+.status-indicator-pulse {
+  position: relative;
+  display: inline-flex;
+}
+.status-indicator-pulse::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: currentColor;
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  opacity: 0.6;
+}
+
+/* Glassmorphic Dark Modal Form Elements */
+.dark-form-container label {
+  @apply text-[10px] text-right font-bold uppercase tracking-wider text-white/50 leading-tight;
+}
+.dark-form-container input,
+.dark-form-container select,
+.dark-form-container textarea {
+  @apply bg-black/40 border border-white/10 rounded-xl text-xs text-white focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/10 outline-none h-8 px-3 transition-all duration-200 placeholder:text-white/20;
+}
+.dark-form-container select option {
+  @apply bg-[#0b0c16] text-white;
+}
+.dark-form-container textarea {
+  @apply h-auto py-2;
+}

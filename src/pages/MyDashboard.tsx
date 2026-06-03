@@ -92,12 +92,12 @@ export function MyDashboard() {
       const resolved = userTickets.filter(t => t.status === "Resolved").length;
       const closed = userTickets.filter(t => t.status === "Closed").length;
       const pending = userTickets.filter(t => t.status === "Pending" || t.status === "On Hold").length;
-      
+
       const overdue = userTickets.filter(t => {
         if (t.status === "Resolved" || t.status === "Closed") return false;
         // Mark Critical priority or breached resolution SLA as overdue
         if (t.priority?.includes("Critical")) return true;
-        
+
         // Also check if resolution deadline exists and is in the past
         if (t.resolutionDeadline) {
           const deadline = toDate(t.resolutionDeadline);
@@ -125,13 +125,13 @@ export function MyDashboard() {
           }
         }
       });
-      const avgResolutionTime = resolvedTicketsCount > 0 
-        ? `${(totalResMins / resolvedTicketsCount).toFixed(1)}h` 
+      const avgResolutionTime = resolvedTicketsCount > 0
+        ? `${(totalResMins / resolvedTicketsCount).toFixed(1)}h`
         : "N/A";
 
       // Completed today
       const todayStart = new Date();
-      todayStart.setHours(0,0,0,0);
+      todayStart.setHours(0, 0, 0, 0);
       const ticketsToday = userTickets.filter(t => {
         const rDate = toDate(t.resolvedAt);
         return rDate && rDate.getTime() >= todayStart.getTime();
@@ -150,8 +150,8 @@ export function MyDashboard() {
       }).length.toString();
 
       // Productivity score
-      const productivityScore = totalCount > 0 
-        ? Math.min(100, Math.round((completedCount / totalCount) * 80 + 20)) 
+      const productivityScore = totalCount > 0
+        ? Math.min(100, Math.round((completedCount / totalCount) * 80 + 20))
         : 100;
 
       // Status distribution array
@@ -288,135 +288,139 @@ export function MyDashboard() {
   if (!data) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(6,182,212,0.3)]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-6">
-      <div className="space-y-8 max-w-7xl mx-auto bg-white bg-opacity-80 backdrop-filter backdrop-blur-lg rounded-xl shadow-lg p-6">
-        {/* Page Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-border">
-          <h1 className="text-2xl font-bold text-foreground">My Personal Analytics</h1>
-          <span className="text-[10px] text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-full border border-border">
-            Logged in as: <strong className="text-foreground">{user?.email || "User"}</strong>
-          </span>
+    <div className="space-y-8 max-w-7xl mx-auto font-outfit">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-5">
+        <div>
+          <h1 className="text-3xl font-black bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent tracking-tight">
+            Personal Command Console
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">Real-time individual performance telemetries & active task controls.</p>
         </div>
+        <span className="text-[10px] text-muted-foreground bg-muted/30 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-border/40 font-bold self-start sm:self-auto">
+          Operator: <strong className="text-foreground">{user?.email || "User"}</strong>
+        </span>
+      </div>
 
-        {/* Quick Actions */}
-        <QuickActions />
+      {/* Quick Actions */}
+      <QuickActions />
 
-        {/* Analytics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link to="/tickets?filter=assigned_to_me" className="block cursor-pointer">
-            <AnalyticsCard title="Total Tickets Assigned" value={data.cards.totalAssigned} />
-          </Link>
-          <Link to="/tickets?filter=created_by_me" className="block cursor-pointer">
-            <AnalyticsCard title="Total Tickets Created" value={data.cards.totalCreated} />
-          </Link>
-          <Link to="/tickets?filter=open" className="block cursor-pointer">
-            <AnalyticsCard title="Open Tickets" value={data.cards.open} />
-          </Link>
-          <Link to="/tickets?filter=in_progress" className="block cursor-pointer">
-            <AnalyticsCard title="In Progress Tickets" value={data.cards.inProgress} />
-          </Link>
-          <Link to="/tickets?filter=resolved" className="block cursor-pointer">
-            <AnalyticsCard title="Resolved Tickets" value={data.cards.resolved} />
-          </Link>
-          <Link to="/tickets?filter=closed" className="block cursor-pointer">
-            <AnalyticsCard title="Closed Tickets" value={data.cards.closed} />
-          </Link>
-          <Link to="/tickets?filter=pending" className="block cursor-pointer">
-            <AnalyticsCard title="Pending Tickets" value={data.cards.pending} />
-          </Link>
-          <Link to="/tickets?filter=overdue" className="block cursor-pointer">
-            <AnalyticsCard title="Overdue Tickets" value={data.cards.overdue} />
-          </Link>
-          <div className="block cursor-pointer">
-            <AnalyticsCard title="Total SLA Breaches" value={breaches.length} />
+      {/* Analytics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link to="/tickets?filter=assigned_to_me" className="block cursor-pointer">
+          <AnalyticsCard title="Total Tickets Assigned" value={data.cards.totalAssigned} />
+        </Link>
+        <Link to="/tickets?filter=created_by_me" className="block cursor-pointer">
+          <AnalyticsCard title="Total Tickets Created" value={data.cards.totalCreated} />
+        </Link>
+        <Link to="/tickets?filter=open" className="block cursor-pointer">
+          <AnalyticsCard title="Open Tickets" value={data.cards.open} />
+        </Link>
+        <Link to="/tickets?filter=in_progress" className="block cursor-pointer">
+          <AnalyticsCard title="In Progress Tickets" value={data.cards.inProgress} />
+        </Link>
+        <Link to="/tickets?filter=resolved" className="block cursor-pointer">
+          <AnalyticsCard title="Resolved Tickets" value={data.cards.resolved} />
+        </Link>
+        <Link to="/tickets?filter=closed" className="block cursor-pointer">
+          <AnalyticsCard title="Closed Tickets" value={data.cards.closed} />
+        </Link>
+        <Link to="/tickets?filter=pending" className="block cursor-pointer">
+          <AnalyticsCard title="Pending Tickets" value={data.cards.pending} />
+        </Link>
+        <Link to="/tickets?filter=overdue" className="block cursor-pointer">
+          <AnalyticsCard title="Overdue Tickets" value={data.cards.overdue} />
+        </Link>
+        <div className="block cursor-pointer">
+          <AnalyticsCard title="Total SLA Breaches" value={breaches.length} />
+        </div>
+      </div>
+
+      {/* Performance Analytics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <PerformanceMetric label="Ticket Completion %" value={data.performance.completionPercentage} />
+        <PerformanceMetric label="Avg Resolution Time" value={data.performance.avgResolutionTime} />
+        <PerformanceMetric label="Tickets Completed Today" value={data.performance.ticketsToday} />
+        <PerformanceMetric label="Weekly Performance" value={data.performance.weekly} />
+        <PerformanceMetric label="Monthly Performance" value={data.performance.monthly} />
+        <PerformanceMetric label="Productivity Score" value={data.performance.productivityScore} />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AnalyticsChart type="pie" title="Ticket Status Distribution" data={data.charts.statusDistribution} />
+        <AnalyticsChart type="pie" title="Category Distribution" data={data.charts.categoryDistribution} />
+        <AnalyticsChart type="line" title="Ticket Trends (Weekly)" data={data.charts.trend} />
+        <AnalyticsChart type="line" title="Productivity & Activity Score" data={data.charts.productivity} />
+      </div>
+
+      {/* Bottom Grid: Recent Activity & Tasks */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <RecentActivityList items={data.recentActivity} />
+        <MyTasksList tasks={data.myTasks} />
+      </div>
+
+      {/* SLA Breaches Section */}
+      <div className="glass-panel rounded-2xl border border-border/80 p-6 shadow-2xl">
+        <h2 className="text-[10px] font-black uppercase tracking-widest text-rose-400 mb-4 font-outfit">Active SLA Breaches</h2>
+        {breaches.length === 0 ? (
+          <p className="text-xs text-muted-foreground font-outfit">No active SLA breaches recorded for your assigned incidents.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-border/40 bg-muted/20">
+                  <th className="p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground font-outfit">Incident ID</th>
+                  <th className="p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground font-outfit">SLA Protocol</th>
+                  <th className="p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground font-outfit">Overdue Duration</th>
+                  <th className="p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground font-outfit">Severity/Timeslot</th>
+                  <th className="p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground font-outfit">Breach Timestamp</th>
+                  <th className="p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground font-outfit">Current State</th>
+                  <th className="p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground font-outfit">Responsible Tech</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30 font-outfit">
+                {breaches.map((breach) => {
+                  const matchedTicket = data.allTickets?.find((t: any) => t.id === breach.record_id);
+                  return (
+                    <tr key={breach.id} className="hover:bg-rose-500/5 transition-colors">
+                      <td className="p-3">
+                        <Link to={`/tickets/${breach.record_id}`} className="font-mono text-xs font-bold text-cyan-400 hover:underline">
+                          {matchedTicket?.number || "INC—"}
+                        </Link>
+                      </td>
+                      <td className="p-3 text-xs font-medium text-foreground">{breach.sla_name}</td>
+                      <td className="p-3 text-xs text-rose-500 font-bold font-orbitron">{breach.breach_duration}</td>
+                      <td className="p-3 text-xs">
+                        <span className="px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[9px] font-black uppercase tracking-wide">
+                          {breach.breach_timeslot}
+                        </span>
+                      </td>
+                      <td className="p-3 text-xs text-muted-foreground font-mono">
+                        {breach.breach_timestamp ? new Date(breach.breach_timestamp).toLocaleString() : "—"}
+                      </td>
+                      <td className="p-3 text-xs">
+                        <span className="px-2 py-0.5 rounded-lg bg-black/25 text-[9px] font-black uppercase border border-white/5 text-muted-foreground">
+                          {matchedTicket?.status || "—"}
+                        </span>
+                      </td>
+                      <td className="p-3 text-xs text-muted-foreground">{breach.assigned_user_name || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-
-        {/* Performance Analytics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <PerformanceMetric label="Ticket Completion %" value={data.performance.completionPercentage} />
-          <PerformanceMetric label="Avg Resolution Time" value={data.performance.avgResolutionTime} />
-          <PerformanceMetric label="Tickets Completed Today" value={data.performance.ticketsToday} />
-          <PerformanceMetric label="Weekly Performance" value={data.performance.weekly} />
-          <PerformanceMetric label="Monthly Performance" value={data.performance.monthly} />
-          <PerformanceMetric label="Productivity Score" value={data.performance.productivityScore} />
-        </div>
-
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <AnalyticsChart type="pie" title="Ticket Status Distribution" data={data.charts.statusDistribution} />
-          <AnalyticsChart type="pie" title="Category Distribution" data={data.charts.categoryDistribution} />
-          <AnalyticsChart type="line" title="Ticket Trends (Weekly)" data={data.charts.trend} />
-          <AnalyticsChart type="line" title="Productivity & Activity Score" data={data.charts.productivity} />
-        </div>
-
-        {/* Bottom Grid: Recent Activity & Tasks */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <RecentActivityList items={data.recentActivity} />
-          <MyTasksList tasks={data.myTasks} />
-        </div>
-
-        {/* SLA Breaches Section */}
-        <div className="bg-white bg-opacity-80 backdrop-filter backdrop-blur-lg rounded-xl border border-border p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-foreground mb-4">My SLA Breaches</h2>
-          {breaches.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No SLA breaches recorded for your assigned tickets.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-border bg-muted/30">
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Ticket Number</th>
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">SLA Name</th>
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Breach Duration</th>
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Breach Timeslot</th>
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Breach Time</th>
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Current Status</th>
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Responsible User</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {breaches.map((breach) => {
-                    const matchedTicket = data.allTickets?.find((t: any) => t.id === breach.record_id);
-                    return (
-                      <tr key={breach.id} className="hover:bg-muted/10 transition-colors">
-                        <td className="p-3">
-                          <Link to={`/tickets/${breach.record_id}`} className="font-mono text-sm font-bold text-blue-600 hover:underline">
-                            {matchedTicket?.number || "INC—"}
-                          </Link>
-                        </td>
-                        <td className="p-3 text-sm">{breach.sla_name}</td>
-                        <td className="p-3 text-sm text-red-600 font-bold">{breach.breach_duration}</td>
-                        <td className="p-3 text-sm">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                            {breach.breach_timeslot}
-                          </span>
-                        </td>
-                        <td className="p-3 text-sm text-muted-foreground">
-                          {breach.breach_timestamp ? new Date(breach.breach_timestamp).toLocaleString() : "—"}
-                        </td>
-                        <td className="p-3 text-sm">
-                          <span className="px-2 py-0.5 rounded bg-muted text-xs font-bold uppercase text-muted-foreground">
-                            {matchedTicket?.status || "—"}
-                          </span>
-                        </td>
-                        <td className="p-3 text-sm text-muted-foreground">{breach.assigned_user_name || "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
 }
+
 export default MyDashboard;

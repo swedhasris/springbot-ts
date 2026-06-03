@@ -11,8 +11,6 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  BarChart,
-  Bar,
 } from "recharts";
 
 interface AnalyticsChartProps {
@@ -22,22 +20,22 @@ interface AnalyticsChartProps {
 }
 
 const COLORS = [
-  "#3b82f6", // Blue
-  "#10b981", // Emerald
-  "#f59e0b", // Amber
-  "#ef4444", // Red
-  "#8b5cf6", // Purple
-  "#ec4899", // Pink
-  "#06b6d4", // Cyan
-  "#14b8a6", // Teal
+  "#00f2fe", // Neon Cyan
+  "#a855f7", // Neon Violet
+  "#10b981", // Neon Emerald
+  "#f59e0b", // Neon Amber
+  "#ec4899", // Neon Pink
+  "#3b82f6", // Electric Blue
+  "#ef4444", // Neon Red
+  "#14b8a6", // Neon Teal
 ];
 
 export default function AnalyticsChart({ type, title, data }: AnalyticsChartProps) {
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white border border-border rounded-xl shadow-sm p-6 flex flex-col justify-center items-center h-80">
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-4 self-start">{title}</h3>
-        <p className="text-sm text-muted-foreground">No data available</p>
+      <div className="glass-panel rounded-2xl p-6 flex flex-col justify-center items-center h-80 border border-border/80 shadow-xl">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-4 self-start font-outfit">{title}</h3>
+        <p className="text-xs text-muted-foreground font-outfit">No Telemetry Data Available</p>
       </div>
     );
   }
@@ -48,9 +46,9 @@ export default function AnalyticsChart({ type, title, data }: AnalyticsChartProp
   );
 
   return (
-    <div className="bg-white border border-border rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
-      <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-foreground">{title}</h3>
+    <div className="glass-panel rounded-2xl p-6 hover:shadow-xl transition-all duration-300 border border-border/80 shadow-xl">
+      <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-foreground font-outfit">{title}</h3>
       </div>
       <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -74,53 +72,63 @@ export default function AnalyticsChart({ type, title, data }: AnalyticsChartProp
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                  backgroundColor: "rgba(9, 10, 21, 0.85)",
+                  backdropFilter: "blur(12px)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: "12px",
+                  fontSize: "11px",
+                  color: "#ffffff",
+                  fontFamily: "Outfit, sans-serif",
+                  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.25)",
                 }}
+                itemStyle={{ color: "#ffffff" }}
               />
               <Legend
                 verticalAlign="bottom"
                 height={36}
                 iconType="circle"
-                wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
+                wrapperStyle={{ fontSize: "10px", paddingTop: "10px", fontFamily: "Outfit, sans-serif" }}
               />
             </PieChart>
           ) : (
             <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.15)" />
               <XAxis
                 dataKey="name"
-                fontSize={10}
+                fontSize={9}
                 tickLine={false}
                 axisLine={false}
                 stroke="#94a3b8"
                 tickMargin={8}
+                style={{ fontFamily: "Outfit, sans-serif" }}
               />
               <YAxis
-                fontSize={10}
+                fontSize={9}
                 tickLine={false}
                 axisLine={false}
                 stroke="#94a3b8"
                 allowDecimals={false}
                 tickMargin={8}
+                style={{ fontFamily: "Orbitron, sans-serif" }}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                  backgroundColor: "rgba(9, 10, 21, 0.85)",
+                  backdropFilter: "blur(12px)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: "12px",
+                  fontSize: "11px",
+                  color: "#ffffff",
+                  fontFamily: "Outfit, sans-serif",
+                  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.25)",
                 }}
+                itemStyle={{ color: "#ffffff" }}
               />
               <Legend
                 verticalAlign="top"
                 height={36}
                 iconType="plainline"
-                wrapperStyle={{ fontSize: "11px" }}
+                wrapperStyle={{ fontSize: "10px", fontFamily: "Outfit, sans-serif" }}
               />
               {keys.map((key, index) => (
                 <Line
@@ -129,8 +137,8 @@ export default function AnalyticsChart({ type, title, data }: AnalyticsChartProp
                   dataKey={key}
                   stroke={COLORS[index % COLORS.length]}
                   strokeWidth={2.5}
-                  dot={{ r: 4, strokeWidth: 1.5, fill: "#ffffff" }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
+                  dot={{ r: 3, strokeWidth: 1.5, fill: "currentColor", className: "text-background" }}
+                  activeDot={{ r: 5, strokeWidth: 0 }}
                 />
               ))}
             </LineChart>

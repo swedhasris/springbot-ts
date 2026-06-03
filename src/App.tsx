@@ -54,6 +54,7 @@ const ActivityTracker = lazy(() => import("./pages/ActivityTracker").then(m => (
 const DataAnalytics = lazy(() => import("./pages/DataAnalytics").then(m => ({ default: m.DataAnalytics })));
 const IncidentCategoryManagement = lazy(() => import("./pages/IncidentCategoryManagement").then(m => ({ default: m.IncidentCategoryManagement })));
 const GlobalSearch = lazy(() => import("./pages/GlobalSearch").then(m => ({ default: m.GlobalSearch })));
+const MeetingManagement = lazy(() => import("./pages/MeetingManagement").then(m => ({ default: m.MeetingManagement })));
 
 function LoadingScreen() {
   return (
@@ -401,6 +402,14 @@ function AppBody() {
                   element={
                     <ProtectedRoute>
                       <GlobalSearch />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/meetings"
+                  element={
+                    <ProtectedRoute>
+                      <MeetingManagement />
                     </ProtectedRoute>
                   }
                 />

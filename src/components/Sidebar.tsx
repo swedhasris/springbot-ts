@@ -151,6 +151,12 @@ export function Sidebar() {
       ]
     },
     {
+      label: "Meetings",
+      items: [
+        { icon: CalendarDays, label: "Meeting Management", path: "/meetings" },
+      ]
+    },
+    {
       label: "Data Analytics",
       adminOnly: true,
       items: [
@@ -207,95 +213,98 @@ export function Sidebar() {
 
   return (
     <aside className={cn(
-      "bg-sn-sidebar text-white flex flex-col h-screen sticky top-0 transition-all duration-300 border-r border-white/10",
-      isCollapsed ? "w-16" : "w-64"
+      "bg-sn-sidebar text-white flex flex-col sticky top-4 left-4 transition-all duration-300 border border-white/10 rounded-2xl m-4 mr-0 shadow-2xl z-20 overflow-hidden",
+      isCollapsed ? "w-16" : "w-64",
+      "h-[calc(100vh-2rem)]"
     )}>
       {/* Sidebar Header */}
-      <div className="p-4 flex items-center justify-between border-b border-white/10 h-16">
+      <div className="p-4 flex items-center justify-between border-b border-white/10 h-16 shrink-0">
         {!isCollapsed && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {branding.logoBase64 ? (
               <img
                 src={branding.logoBase64}
                 alt="Logo"
-                className="w-8 h-8 rounded object-cover"
+                className="w-8 h-8 rounded-lg object-cover shadow-[0_0_10px_rgba(6,182,212,0.3)]"
               />
             ) : (
-              <div className="w-8 h-8 bg-sn-green rounded flex items-center justify-center font-bold text-sn-dark">
+              <div className="w-8 h-8 bg-gradient-to-tr from-cyan-400 to-purple-600 rounded-lg flex items-center justify-center font-outfit font-black text-white shadow-[0_0_12px_rgba(6,182,212,0.4)]">
                 {branding.companyName.charAt(0).toUpperCase()}
               </div>
             )}
-            <span className="text-xl font-bold tracking-tight">{branding.companyName}</span>
+            <span className="text-sm font-outfit font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent uppercase truncate max-w-[140px]" title={branding.companyName}>
+              {branding.companyName}
+            </span>
           </div>
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 hover:bg-white/10 rounded transition-colors"
+          className="p-1.5 hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer"
         >
-          {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+          {isCollapsed ? <Menu className="w-4 h-4 text-cyan-400" /> : <ChevronLeft className="w-4 h-4 text-text-dim hover:text-white" />}
         </button>
       </div>
 
       {/* Filter Navigator */}
       {!isCollapsed && (
-        <div className="p-4">
+        <div className="p-4 shrink-0">
           <div className="relative group">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-sn-green transition-colors" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-cyan-400 transition-colors" />
             <input
               type="text"
-              placeholder="Filter navigator"
+              placeholder="Navigator search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded py-2 pl-9 pr-3 text-sm outline-none focus:ring-1 focus:ring-sn-green focus:bg-white/10 transition-all"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-400 focus:bg-white/10 focus:shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-all placeholder:text-text-dim/60"
             />
           </div>
         </div>
       )}
 
       {/* Navigation Menu */}
-      <nav className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar py-2">
+      <nav className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar py-2 px-2 space-y-1">
         {filteredMenu.map((section) => (
-          <div key={section.label} className="mb-1">
+          <div key={section.label} className="mb-2">
             {!isCollapsed && (
               <button
                 onClick={() => toggleSection(section.label)}
-                className="w-full flex items-center justify-between px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-text-dim hover:text-white transition-colors group"
+                className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-outfit font-black uppercase tracking-widest text-text-dim/70 hover:text-white transition-colors group cursor-pointer"
               >
                 <span>{section.label}</span>
                 {expandedSections.includes(section.label) ? (
-                  <ChevronDown className="w-3 h-3" />
+                  <ChevronDown className="w-3 h-3 text-cyan-400/70 group-hover:text-cyan-400" />
                 ) : (
-                  <ChevronRight className="w-3 h-3" />
+                  <ChevronRight className="w-3 h-3 text-text-dim/50 group-hover:text-white" />
                 )}
               </button>
             )}
 
             {(expandedSections.includes(section.label) || isCollapsed || searchQuery) && (
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 mt-1">
                 {section.items?.map((item) => (
                   <Link
                     key={item.label}
                     to={item.path || "#"}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-2.5 transition-all relative group",
+                      "flex items-center gap-3 px-3 py-2 rounded-xl transition-all relative group cursor-pointer",
                       location.pathname === item.path
-                        ? "bg-sn-green/10 text-sn-green border-r-2 border-sn-green"
+                        ? "bg-gradient-to-r from-cyan-500/15 to-purple-500/5 text-cyan-400 border-r border-cyan-400 shadow-[inset_0_0_12px_rgba(6,182,212,0.1)] font-semibold"
                         : "text-text-dim hover:bg-white/5 hover:text-white"
                     )}
                   >
                     <item.icon className={cn(
-                      "w-4 h-4 shrink-0",
-                      location.pathname === item.path ? "text-sn-green" : "text-text-dim group-hover:text-white"
+                      "w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
+                      location.pathname === item.path ? "text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]" : "text-text-dim group-hover:text-white"
                     )} />
-                    {!isCollapsed && <span className="text-sm truncate flex-grow">{item.label}</span>}
+                    {!isCollapsed && <span className="text-xs truncate flex-grow">{item.label}</span>}
                     {!isCollapsed && item.badge !== undefined && item.badge > 0 && (
-                      <span className="bg-sn-green text-sn-dark text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                      <span className="bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 text-[10px] font-outfit font-black px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-[0_0_10px_rgba(6,182,212,0.3)]">
                         {item.badge}
                       </span>
                     )}
 
                     {isCollapsed && (
-                      <div className="absolute left-16 bg-sn-sidebar border border-white/10 px-3 py-2 rounded shadow-xl text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                      <div className="absolute left-16 bg-slate-950 border border-white/10 px-3 py-2 rounded-xl shadow-2xl text-[10px] uppercase font-bold tracking-wider whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 transform translate-x-2 group-hover:translate-x-0">
                         {item.label}
                       </div>
                     )}
@@ -308,26 +317,26 @@ export function Sidebar() {
       </nav>
 
       {/* Sidebar Footer */}
-      <div className="p-4 border-t border-white/10 space-y-2">
+      <div className="p-3 border-t border-white/10 space-y-1.5 shrink-0 bg-black/20">
         <button
           onClick={() => setTheme(isDarkMode ? "light" : "dark")}
           className={cn(
-            "flex items-center gap-3 px-4 py-2.5 w-full text-text-dim hover:text-white transition-colors rounded hover:bg-white/5",
+            "flex items-center gap-3 px-3 py-2 w-full text-text-dim hover:text-white transition-all duration-200 rounded-xl hover:bg-white/5 cursor-pointer text-xs",
             isCollapsed && "justify-center px-0"
           )}
         >
-          {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          {!isCollapsed && <span className="text-sm">{isDarkMode ? "Light Mode" : "Dark Mode"}</span>}
+          {isDarkMode ? <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" /> : <Moon className="w-4 h-4 text-cyan-400" />}
+          {!isCollapsed && <span>{isDarkMode ? "Light Spectrum" : "Dark Cyber Mode"}</span>}
         </button>
         <button
           onClick={() => signOut()}
           className={cn(
-            "flex items-center gap-3 px-4 py-2.5 w-full text-text-dim hover:text-white transition-colors rounded hover:bg-white/5",
+            "flex items-center gap-3 px-3 py-2 w-full text-text-dim hover:text-red-400 transition-all duration-200 rounded-xl hover:bg-red-500/10 cursor-pointer text-xs",
             isCollapsed && "justify-center px-0"
           )}
         >
           <LogOut className="w-4 h-4" />
-          {!isCollapsed && <span className="text-sm">Logout</span>}
+          {!isCollapsed && <span>System Logout</span>}
         </button>
       </div>
     </aside>

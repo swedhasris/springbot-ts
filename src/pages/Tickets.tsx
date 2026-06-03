@@ -28,6 +28,8 @@ export function Tickets() {
   const { user, profile } = useAuth();
   const { categories, subcategories, serviceProviders, groups, members } = useServiceCatalog();
   const [searchParams] = useSearchParams();
+  const [viewMode, setViewMode] = useState<'hybrid' | 'table'>('hybrid');
+  const [showFilters, setShowFilters] = useState(false);
   const filter = searchParams.get("filter");
   const action = searchParams.get("action");
 
@@ -682,98 +684,178 @@ export function Tickets() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-7xl mx-auto font-outfit">
+      {/* Workspace Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tickets</h1>
-          <p className="text-muted-foreground">Manage and track IT support requests.</p>
+          <h1 className="text-3xl font-black bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent tracking-tight">
+            Security Control Workspace
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">Real-time incident streams & service request orchestration.</p>
         </div>
-        <Button onClick={() => openModal()} className="bg-sn-green text-sn-dark font-bold">
-          <Plus className="w-4 h-4 mr-2" /> Create Ticket
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Layout viewMode toggle buttons */}
+          <div className="bg-muted/30 dark:bg-white/5 border border-border/40 p-1 rounded-xl flex gap-1 items-center">
+            <button
+              onClick={() => setViewMode('hybrid')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                viewMode === 'hybrid'
+                  ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Grid View
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                viewMode === 'table'
+                  ? "bg-purple-500/15 text-purple-400 border border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.15)]"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Ops Table
+            </button>
+          </div>
+
+          <Button onClick={() => openModal()} className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-xl transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)] cursor-pointer">
+            <Plus className="w-4 h-4 mr-2" /> Launch Incident
+          </Button>
+        </div>
       </div>
 
-      <div className="sn-card overflow-hidden p-0">
-        <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search..."
-                className="pl-9 pr-4 py-2 bg-white border border-border rounded-md text-sm w-64 focus:ring-2 focus:ring-sn-green outline-none"
-              />
-            </div>
-            <Button variant="outline" size="sm"><Filter className="w-4 h-4 mr-2" /> Filter</Button>
+      {/* Control Toolbar */}
+      <div className="glass-panel rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative w-full md:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search description..."
+              value={columnFilters.title}
+              onChange={e => setColumnFilters({ ...columnFilters, title: e.target.value })}
+              className="pl-9 pr-4 py-2 bg-background/50 border border-border/80 rounded-xl text-xs w-full focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-400 outline-none transition-all"
+            />
           </div>
-          <div className="text-sm text-muted-foreground">Showing {filteredTickets.length} tickets</div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className={cn(
+              "rounded-xl cursor-pointer text-xs font-bold transition-all shrink-0",
+              showFilters ? "bg-cyan-500/10 border-cyan-500 text-cyan-400" : ""
+            )}
+          >
+            <Filter className="w-3.5 h-3.5 mr-2" /> Advanced Filter
+          </Button>
         </div>
+        <div className="text-xs text-muted-foreground shrink-0 font-bold">Showing {filteredTickets.length} incidents</div>
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">Number</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">Short Description</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">Reporting User</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">Priority</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">State</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">Category</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">Assignment Group</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">Assigned To</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight">SLA</th>
-                <th className="data-table-header p-2 text-[11px] font-bold uppercase tracking-tight text-right">Actions</th>
-              </tr>
-              <tr className="bg-white border-b border-border">
-                <td className="p-1.5"><input value={columnFilters.number} onChange={e => setColumnFilters({ ...columnFilters, number: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"><input value={columnFilters.title} onChange={e => setColumnFilters({ ...columnFilters, title: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"><input value={columnFilters.caller} onChange={e => setColumnFilters({ ...columnFilters, caller: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"><input value={columnFilters.priority} onChange={e => setColumnFilters({ ...columnFilters, priority: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"><input value={columnFilters.status} onChange={e => setColumnFilters({ ...columnFilters, status: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"><input value={columnFilters.category} onChange={e => setColumnFilters({ ...columnFilters, category: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"><input value={columnFilters.assignmentGroup} onChange={e => setColumnFilters({ ...columnFilters, assignmentGroup: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"><input value={columnFilters.assignedTo} onChange={e => setColumnFilters({ ...columnFilters, assignedTo: e.target.value })} placeholder="Search" className="w-full p-1 border border-border rounded text-[11px] outline-none focus:ring-1 focus:ring-sn-green" /></td>
-                <td className="p-1.5"></td>
-                <td className="p-1.5"></td>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTickets.map((ticket, idx) => {
-                const assignedAgent = agents.find(a => a.id === ticket.assignedTo);
-                return (
-                  <tr key={ticket.id} className="data-table-row border-b border-border hover:bg-muted/10 transition-colors group">
-                    <td className="p-2">
-                      <Link to={`/tickets/${ticket.id}`} className="font-mono text-[11px] font-bold text-blue-600 hover:underline">
+      {/* Quick Filters Drawer */}
+      <div className={cn(
+        "glass-panel rounded-2xl p-5 border border-border/80 transition-all duration-300 shadow-lg",
+        showFilters ? "block animate-in slide-in-from-top duration-200" : "hidden"
+      )}>
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-cyan-400 mb-3.5">Workspace Filters</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Incident ID</label>
+            <input value={columnFilters.number} onChange={e => setColumnFilters({ ...columnFilters, number: e.target.value })} placeholder="e.g. INC481" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Description</label>
+            <input value={columnFilters.title} onChange={e => setColumnFilters({ ...columnFilters, title: e.target.value })} placeholder="e.g. Database crash" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Reporting User</label>
+            <input value={columnFilters.caller} onChange={e => setColumnFilters({ ...columnFilters, caller: e.target.value })} placeholder="e.g. Alice" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Priority</label>
+            <select value={columnFilters.priority} onChange={e => setColumnFilters({ ...columnFilters, priority: e.target.value })} className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400">
+              <option value="">All Priorities</option>
+              <option value="1 - Critical">1 - Critical</option>
+              <option value="2 - High">2 - High</option>
+              <option value="3 - Moderate">3 - Moderate</option>
+              <option value="4 - Low">4 - Low</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Incident State</label>
+            <input value={columnFilters.status} onChange={e => setColumnFilters({ ...columnFilters, status: e.target.value })} placeholder="e.g. In Progress" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Category</label>
+            <input value={columnFilters.category} onChange={e => setColumnFilters({ ...columnFilters, category: e.target.value })} placeholder="e.g. Hardware" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Assignment Group</label>
+            <input value={columnFilters.assignmentGroup} onChange={e => setColumnFilters({ ...columnFilters, assignmentGroup: e.target.value })} placeholder="e.g. Service Desk" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-muted-foreground font-semibold">Assigned Engineer</label>
+            <input value={columnFilters.assignedTo} onChange={e => setColumnFilters({ ...columnFilters, assignedTo: e.target.value })} placeholder="e.g. Agent Smith" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+          <Button size="sm" variant="outline" onClick={() => setColumnFilters({ number: "", title: "", caller: "", priority: "", status: "", category: "", assignmentGroup: "", assignedTo: "" })} className="rounded-xl">Reset Filters</Button>
+          <Button size="sm" onClick={() => setShowFilters(false)} className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold rounded-xl">Apply</Button>
+        </div>
+      </div>
+
+      {/* Main Ticket Feed */}
+      {viewMode === 'hybrid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredTickets.length === 0 ? (
+            <div className="col-span-full py-16 text-center text-muted-foreground bg-white/20 dark:bg-black/10 backdrop-blur-md rounded-2xl border border-dashed border-border p-8">
+              No incidents found matching current filters.
+            </div>
+          ) : (
+            filteredTickets.map((ticket, idx) => {
+              const assignedAgent = allUsers.find(a => a.id === ticket.assignedTo) || agents.find(a => a.id === ticket.assignedTo);
+              const p = ticket.priority ?? "4 - Low";
+              const priorityClass = p.includes("Critical") ? "priority-glow-critical border-l-4 border-l-red-500" :
+                p.includes("High") ? "priority-glow-high border-l-4 border-l-orange-500" :
+                  p.includes("Moderate") ? "priority-glow-moderate border-l-4 border-l-emerald-500" : "priority-glow-low border-l-4 border-l-cyan-500";
+              const priorityBadge = p.includes("Critical") ? "bg-red-500/10 text-red-500 border border-red-500/20" :
+                p.includes("High") ? "bg-orange-500/10 text-orange-500 border border-orange-500/20" :
+                  p.includes("Moderate") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+                    "bg-cyan-500/10 text-cyan-500 border border-cyan-500/20";
+
+              return (
+                <div key={ticket.id} className={cn("glass-panel rounded-2xl p-5 flex flex-col justify-between border border-border/80 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-cyan-500/30 group", priorityClass)}>
+                  <div>
+                    <div className="flex items-center justify-between mb-3.5">
+                      <Link to={`/tickets/${ticket.id}`} className="font-mono text-[10px] font-black uppercase tracking-wider bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 px-2 py-0.5 rounded border border-cyan-500/20 hover:underline">
                         {ticket.number || `INC000${idx + 1}`}
                       </Link>
-                    </td>
-                    <td className="p-2 text-[11px] font-medium">{ticket.title}</td>
-                    <td className="p-2 text-[11px]">{ticket.caller}</td>
-                    <td className="p-2">
-                      <span className={cn(
-                        "px-1 py-0.5 rounded text-[9px] font-bold uppercase",
-                        ticket.priority?.includes("Critical") ? "bg-red-600 text-white" :
-                          ticket.priority?.includes("High") ? "bg-red-100 text-red-700" :
-                            ticket.priority?.includes("Moderate") ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"
-                      )}>
-                        {ticket.priority}
+                      <span className={cn("text-[9px] uppercase tracking-widest font-black px-2 py-0.5 rounded-lg", priorityBadge)}>
+                        {p}
                       </span>
-                    </td>
-                    <td className="p-2 text-[11px]">{ticket.status}</td>
-                    <td className="p-2 text-[11px]">
-                      <div>{ticket.category}</div>
-                      {(ticket.incidentCategory || ticket.incident_category) && (
-                        <div className="mt-1">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-blue-50 text-blue-600 border border-blue-100">
-                            📌 {ticket.incidentCategory || ticket.incident_category}
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-2 text-[11px]">{ticket.assignmentGroup || "(empty)"}</td>
-                    <td className="p-2 text-[11px]">{assignedAgent?.name || ticket.assignedToName || ticket.assignedTo || "(empty)"}</td>
-                    <td className="p-2">
-                      <div className="flex flex-col gap-1">
+                    </div>
+
+                    <h4 className="font-outfit font-bold text-sm text-foreground line-clamp-2 mb-2 group-hover:text-cyan-400 transition-colors" title={ticket.title}>
+                      {ticket.title}
+                    </h4>
+
+                    <div className="text-[10px] text-muted-foreground space-y-1.5 my-3 bg-black/10 p-2.5 rounded-xl border border-white/5">
+                      <div className="flex justify-between"><span className="font-semibold uppercase tracking-wider text-white/50 text-[8px]">Reporting User:</span> <span className="text-white/80 font-medium truncate max-w-[150px]">{ticket.caller}</span></div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold uppercase tracking-wider text-white/50 text-[8px]">Category:</span>
+                        <span className="text-white/80 font-medium flex items-center gap-1">
+                          📌 {ticket.category || ticket.incidentCategory || ticket.incident_category}
+                        </span>
+                      </div>
+                      <div className="flex justify-between"><span className="font-semibold uppercase tracking-wider text-white/50 text-[8px]">Group:</span> <span className="text-white/80 font-medium truncate max-w-[150px]">{ticket.assignmentGroup || "(empty)"}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3.5 mt-2 border-t border-border/40 pt-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col gap-1 w-full bg-black/15 p-2 rounded-xl border border-white/5">
                         <SLATimer
                           label="Resp"
                           deadline={ticket.responseDeadline}
@@ -794,37 +876,142 @@ export function Tickets() {
                           waitUntil={ticket.firstResponseAt ?? null}
                         />
                       </div>
-                    </td>
-                    <td className="p-2 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Link to={`/tickets/${ticket.id}`} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded transition-colors" title="Edit Ticket">
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400 text-[10px] font-bold flex items-center justify-center">
+                          {(assignedAgent?.name || ticket.assignedToName || "U")[0].toUpperCase()}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground truncate max-w-[110px]" title={assignedAgent?.name || ticket.assignedToName || ticket.assignedTo || "Unassigned"}>
+                          {assignedAgent?.name || ticket.assignedToName || ticket.assignedTo || "Unassigned"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <Link to={`/tickets/${ticket.id}`} className="p-1.5 text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors border border-transparent hover:border-cyan-500/20" title="Edit Ticket">
                           <Edit className="w-3.5 h-3.5" />
                         </Link>
-                        <button onClick={async () => {
+                        <button onClick={async (e) => {
+                          e.preventDefault();
                           if (confirm(`Are you sure you want to delete ticket ${ticket.number}?`)) {
                             await deleteDoc(doc(db, "tickets", ticket.id));
                           }
-                        }} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors" title="Delete Ticket">
+                        }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/20 cursor-pointer" title="Delete Ticket">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
-      </div>
+      ) : (
+        /* Render modern ops table view mode */
+        <div className="sn-card overflow-hidden p-0 border border-border/80 shadow-2xl rounded-2xl bg-card/60 backdrop-blur-md">
+          <div className="p-4 border-b border-border/60 flex items-center justify-between bg-muted/20 backdrop-blur-md">
+            <div className="text-sm font-bold">Operations Incident Log</div>
+            <div className="text-[10px] text-muted-foreground uppercase font-black tracking-wider">Total Active: {filteredTickets.length}</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-muted/30 border-b border-border/60">
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Number</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Description</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Reporter</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Priority</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">State</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Category</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Group</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Engineer</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">SLA Status</th>
+                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {filteredTickets.map((ticket, idx) => {
+                  const assignedAgent = allUsers.find(a => a.id === ticket.assignedTo) || agents.find(a => a.id === ticket.assignedTo);
+                  const p = ticket.priority ?? "4 - Low";
+                  const priorityBadge = p.includes("Critical") ? "bg-red-500/10 text-red-500 border border-red-500/20" :
+                    p.includes("High") ? "bg-orange-500/10 text-orange-500 border border-orange-500/20" :
+                      p.includes("Moderate") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+                        "bg-cyan-500/10 text-cyan-500 border border-cyan-500/20";
+                  return (
+                    <tr key={ticket.id} className="hover:bg-cyan-500/5 transition-colors font-outfit">
+                      <td className="p-3">
+                        <Link to={`/tickets/${ticket.id}`} className="font-mono text-xs font-bold text-cyan-400 hover:underline">
+                          {ticket.number || `INC000${idx + 1}`}
+                        </Link>
+                      </td>
+                      <td className="p-3 text-xs font-medium text-foreground max-w-[180px] truncate" title={ticket.title}>{ticket.title}</td>
+                      <td className="p-3 text-xs text-muted-foreground truncate max-w-[110px]">{ticket.caller}</td>
+                      <td className="p-3">
+                        <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider", priorityBadge)}>
+                          {p}
+                        </span>
+                      </td>
+                      <td className="p-3 text-xs font-semibold">{ticket.status}</td>
+                      <td className="p-3 text-xs text-muted-foreground">
+                        {ticket.category || ticket.incidentCategory || ticket.incident_category}
+                      </td>
+                      <td className="p-3 text-xs text-muted-foreground truncate max-w-[120px]">{ticket.assignmentGroup || "(empty)"}</td>
+                      <td className="p-3 text-xs font-medium">{assignedAgent?.name || ticket.assignedToName || ticket.assignedTo || "Unassigned"}</td>
+                      <td className="p-3">
+                        <div className="flex flex-col gap-1 bg-black/10 p-1.5 rounded-lg border border-white/5">
+                          <SLATimer
+                            label="Resp"
+                            deadline={ticket.responseDeadline}
+                            startTime={ticket.responseSlaStartTime || ticket.createdAt}
+                            metAt={ticket.firstResponseAt}
+                            isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
+                            onHoldStart={ticket.onHoldStart}
+                            totalPausedTime={ticket.totalPausedTime}
+                          />
+                          <SLATimer
+                            label="Res"
+                            deadline={ticket.resolutionDeadline}
+                            startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
+                            metAt={ticket.resolvedAt}
+                            isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
+                            onHoldStart={ticket.onHoldStart}
+                            totalPausedTime={ticket.totalPausedTime}
+                            waitUntil={ticket.firstResponseAt ?? null}
+                          />
+                        </div>
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link to={`/tickets/${ticket.id}`} className="p-1.5 text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors" title="Edit Ticket">
+                            <Edit className="w-3.5 h-3.5" />
+                          </Link>
+                          <button onClick={async () => {
+                            if (confirm(`Are you sure you want to delete ticket ${ticket.number}?`)) {
+                              await deleteDoc(doc(db, "tickets", ticket.id));
+                            }
+                          }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer" title="Delete Ticket">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Create Ticket Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+          <div className="bg-[#090a15]/90 backdrop-blur-xl border border-cyan-500/20 text-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-200 shadow-[0_15px_50px_rgba(0,0,0,0.5)]">
+            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/20 font-outfit">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground">Incident</span>
-                <span className="text-sm font-bold">New Record</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 px-2.5 py-1 rounded-full">New Incident Feed</span>
               </div>
               <div className="flex items-center gap-2">
                 {isFeatureVisible("button.cancel") && (
@@ -832,6 +1019,7 @@ export function Tickets() {
                     variant="outline"
                     size="sm"
                     onClick={closeModal}
+                    className="border-white/10 text-white/80 hover:bg-white/5 hover:text-white rounded-xl cursor-pointer"
                     disabled={isFeatureDisabled("button.cancel")}
                   >
                     Cancel
@@ -840,17 +1028,17 @@ export function Tickets() {
                 {isFeatureVisible("button.submit") && (
                   <Button
                     size="sm"
-                    className="bg-sn-green text-sn-dark font-bold"
+                    className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-xl shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
                     onClick={(e: any) => handleCreateTicket(e)}
                     disabled={isSubmitting || isFeatureDisabled("button.submit")}
                   >
-                    {isSubmitting ? "Submitting..." : "Submit"}
+                    {isSubmitting ? "Orchestrating..." : "Submit Incident"}
                   </Button>
                 )}
               </div>
             </div>
 
-            <form onSubmit={handleCreateTicket} className="p-6 overflow-y-auto max-h-[85vh]">
+            <form onSubmit={handleCreateTicket} className="p-6 overflow-y-auto max-h-[85vh] dark-form-container">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
                 {/* Left Column */}
                 {isFeatureVisible("section.leftColumn") && (

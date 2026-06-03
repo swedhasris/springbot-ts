@@ -23,6 +23,7 @@ import { initializeFirestore as initFirestore, collection as fsCollection, getDo
 loadEnv();
 
 let firestoreDb: any = null;
+let firestoreQuotaExceeded = false;
 try {
   const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
   if (fs.existsSync(firebaseConfigPath)) {
@@ -252,6 +253,62 @@ async function getSQLiteDb() {
         breach_timeslot TEXT,
         breach_timestamp TEXT,
         status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS meetings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_id TEXT UNIQUE NOT NULL,
+        creation_method TEXT NOT NULL,
+        title TEXT NOT NULL,
+        meeting_date DATETIME NOT NULL,
+        platform TEXT,
+        conducted_by TEXT,
+        attendees TEXT,
+        absentees TEXT,
+        one_line_summary TEXT,
+        short_description TEXT,
+        detailed_description TEXT,
+        discussion_points TEXT,
+        decisions_taken TEXT,
+        action_items TEXT,
+        responsible_person TEXT,
+        target_date TEXT,
+        next_steps TEXT,
+        remarks TEXT,
+        file_path TEXT,
+        file_name TEXT,
+        file_size INTEGER,
+        status TEXT DEFAULT 'Draft',
+        version INTEGER DEFAULT 1,
+        created_by TEXT,
+        created_by_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS meeting_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_db_id INTEGER NOT NULL,
+        meeting_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        title TEXT,
+        meeting_date DATETIME,
+        status TEXT,
+        file_path TEXT,
+        file_name TEXT,
+        template_data TEXT,
+        updated_by TEXT,
+        updated_by_name TEXT,
+        change_summary TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (meeting_db_id) REFERENCES meetings(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS meeting_audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        performed_by TEXT NOT NULL,
+        performed_by_name TEXT,
+        details TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -487,7 +544,7 @@ async function recordBreach(breach: {
 }
 
 async function checkFirestoreSLABreaches() {
-  if (!firestoreDb) return;
+  if (!firestoreDb || firestoreQuotaExceeded) return;
   const now = new Date();
   const nowStr = now.toISOString();
 
@@ -676,6 +733,10 @@ async function checkFirestoreSLABreaches() {
     }
   } catch (err: any) {
     console.error("[SLA Monitor] Error running Firestore SLA check:", err.message);
+    if (err.message?.includes("Quota exceeded") || err.message?.includes("resource-exhausted") || err.message?.includes("resource exhausted")) {
+      console.warn("[SLA Monitor] Firestore quota exceeded. Disabling background checks.");
+      firestoreQuotaExceeded = true;
+    }
   }
 }
 
@@ -2506,12 +2567,15 @@ async function startServer() {
       // --- 1. SEARCH TICKETS (Incidents, Service Requests, Tasks) ---
       if (shouldSearch("tickets") || shouldSearch("incidents") || shouldSearch("service_requests") || shouldSearch("tasks")) {
         let allTickets: any[] = [];
-        if (firestoreDb) {
+        if (firestoreDb && !firestoreQuotaExceeded) {
           try {
             const ticketsSnap = await fsGetDocs(fsCollection(firestoreDb, "tickets"));
             allTickets = ticketsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-          } catch (e) {
+          } catch (e: any) {
             console.error("Error fetching tickets from Firestore:", e);
+            if (e.message?.includes("Quota exceeded") || e.message?.includes("resource-exhausted")) {
+              firestoreQuotaExceeded = true;
+            }
           }
         }
         
@@ -2653,12 +2717,15 @@ async function startServer() {
       // --- 2. SEARCH PROBLEMS ---
       if (isAgentOrAdmin && (shouldSearch("problems") || shouldSearch("problem"))) {
         let allProblems: any[] = [];
-        if (firestoreDb) {
+        if (firestoreDb && !firestoreQuotaExceeded) {
           try {
             const snap = await fsGetDocs(fsCollection(firestoreDb, "problems"));
             allProblems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          } catch (e) {
+          } catch (e: any) {
             console.error("Error fetching problems:", e);
+            if (e.message?.includes("Quota exceeded") || e.message?.includes("resource-exhausted")) {
+              firestoreQuotaExceeded = true;
+            }
           }
         }
         
@@ -2702,12 +2769,15 @@ async function startServer() {
       // --- 3. SEARCH CHANGES ---
       if (isAgentOrAdmin && (shouldSearch("changes") || shouldSearch("change"))) {
         let allChanges: any[] = [];
-        if (firestoreDb) {
+        if (firestoreDb && !firestoreQuotaExceeded) {
           try {
             const snap = await fsGetDocs(fsCollection(firestoreDb, "changes"));
             allChanges = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          } catch (e) {
+          } catch (e: any) {
             console.error("Error fetching changes:", e);
+            if (e.message?.includes("Quota exceeded") || e.message?.includes("resource-exhausted")) {
+              firestoreQuotaExceeded = true;
+            }
           }
         }
 
@@ -2754,12 +2824,15 @@ async function startServer() {
       // --- 4. SEARCH KB ARTICLES ---
       if (shouldSearch("kb_articles") || shouldSearch("kb")) {
         let allKb: any[] = [];
-        if (firestoreDb) {
+        if (firestoreDb && !firestoreQuotaExceeded) {
           try {
             const snap = await fsGetDocs(fsCollection(firestoreDb, "kb_articles"));
             allKb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          } catch (e) {
+          } catch (e: any) {
             console.error("Error fetching KB articles:", e);
+            if (e.message?.includes("Quota exceeded") || e.message?.includes("resource-exhausted")) {
+              firestoreQuotaExceeded = true;
+            }
           }
         }
 
@@ -3891,6 +3964,347 @@ Respond ONLY with JSON: {"summary": "your summary here"}`;
   // Serve uploaded screenshots statically
   app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
   app.use('/captures', express.static(path.join(__dirname, 'public', 'captures')));
+
+  // ==========================================
+  // MEETING MANAGEMENT FEATURES (MOMs)
+  // ==========================================
+  
+  // Configure multer for MOM file uploads
+  const momsDir = path.join(__dirname, 'public', 'uploads', 'moms');
+  if (!fs.existsSync(momsDir)) {
+    fs.mkdirSync(momsDir, { recursive: true });
+  }
+
+  const momStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, momsDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const baseName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+      cb(null, `${baseName}_${Date.now()}${ext}`);
+    },
+  });
+
+  const momUpload = multer({
+    storage: momStorage,
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB max
+    fileFilter: (_req, file, cb) => {
+      const allowedExts = ['.pdf', '.docx', '.xlsx'];
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (allowedExts.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`Invalid file type: ${ext}. Only PDF, DOCX, and XLSX are accepted.`));
+      }
+    },
+  });
+
+  async function generateMeetingId(): Promise<string> {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `MOM-${dateStr}-`;
+    try {
+      const rows = await query("SELECT meeting_id FROM meetings WHERE meeting_id LIKE ? ORDER BY id DESC LIMIT 1", [`${prefix}%`]);
+      let seqNum = 1;
+      if (rows.length > 0) {
+        const lastId = rows[0].meeting_id;
+        const parts = lastId.split('-');
+        const lastSeq = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(lastSeq)) {
+          seqNum = lastSeq + 1;
+        }
+      }
+      return `${prefix}${String(seqNum).padStart(4, '0')}`;
+    } catch (e) {
+      return `${prefix}${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+  }
+
+  // POST /api/moms/upload - MOM Document Upload Endpoint
+  app.post('/api/moms/upload', momUpload.single('file'), (req: any, res: any) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No MOM document file received' });
+      }
+      const filePath = `/uploads/moms/${req.file.filename}`;
+      res.json({
+        file_path: filePath,
+        file_name: req.file.originalname,
+        file_size: req.file.size,
+        filename: req.file.filename
+      });
+    } catch (error: any) {
+      console.error('[MOM Upload] File upload failed:', error.message);
+      res.status(500).json({ error: 'MOM document upload failed: ' + error.message });
+    }
+  });
+
+  // GET /api/meetings - Fetch meetings list with search/filtering
+  app.get('/api/meetings', async (req: any, res: any) => {
+    try {
+      const { status, platform, search, date } = req.query;
+      let sql = 'SELECT * FROM meetings WHERE 1=1';
+      const values: any[] = [];
+
+      if (status) {
+        sql += ' AND status = ?';
+        values.push(status);
+      }
+      if (platform) {
+        sql += ' AND platform = ?';
+        values.push(platform);
+      }
+      if (date) {
+        sql += ' AND DATE(meeting_date) = DATE(?)';
+        values.push(date);
+      }
+      if (search) {
+        sql += ' AND (title LIKE ? OR one_line_summary LIKE ? OR conducted_by LIKE ? OR short_description LIKE ? OR detailed_description LIKE ? OR attendees LIKE ? OR decisions_taken LIKE ?)';
+        const likeVal = `%${search}%`;
+        values.push(likeVal, likeVal, likeVal, likeVal, likeVal, likeVal, likeVal);
+      }
+
+      sql += ' ORDER BY meeting_date DESC, id DESC';
+      const rows = await query(sql, values);
+      res.json(rows);
+    } catch (error: any) {
+      console.error('[Meetings API] Fetch failed:', error.message);
+      res.status(500).json({ error: 'Failed to fetch meetings' });
+    }
+  });
+
+  // GET /api/meetings/:id - Retrieve meeting with its versions and logs
+  app.get('/api/meetings/:id', async (req: any, res: any) => {
+    try {
+      const { id } = req.params;
+      const meetings = await query('SELECT * FROM meetings WHERE id = ? OR meeting_id = ?', [id, id]);
+      if (meetings.length === 0) {
+        return res.status(404).json({ error: 'Meeting not found' });
+      }
+      const meeting = meetings[0];
+      const versions = await query('SELECT * FROM meeting_versions WHERE meeting_db_id = ? ORDER BY version DESC', [meeting.id]);
+      const auditLogs = await query('SELECT * FROM meeting_audit_logs WHERE meeting_id = ? ORDER BY created_at DESC', [meeting.meeting_id]);
+
+      res.json({
+        ...meeting,
+        versions,
+        auditLogs
+      });
+    } catch (error: any) {
+      console.error('[Meetings API] Get details failed:', error.message);
+      res.status(500).json({ error: 'Failed to retrieve meeting details' });
+    }
+  });
+
+  // POST /api/meetings - Create new meeting
+  app.post('/api/meetings', async (req: any, res: any) => {
+    try {
+      const {
+        creationMethod,
+        title,
+        meetingDate,
+        platform,
+        conductedBy,
+        attendees,
+        absentees,
+        oneLineSummary,
+        shortDescription,
+        detailedDescription,
+        discussionPoints,
+        decisionsTaken,
+        actionItems,
+        responsiblePerson,
+        targetDate,
+        nextSteps,
+        remarks,
+        filePath,
+        fileName,
+        fileSize,
+        status,
+        createdBy,
+        createdByName
+      } = req.body;
+
+      if (!title || !meetingDate || !creationMethod) {
+        return res.status(400).json({ error: 'Required fields: title, meetingDate, and creationMethod' });
+      }
+
+      const meetingId = await generateMeetingId();
+
+      const meetingData = {
+        meeting_id: meetingId,
+        creation_method: creationMethod,
+        title,
+        meeting_date: meetingDate,
+        platform: platform || null,
+        conducted_by: conductedBy || null,
+        attendees: attendees || null,
+        absentees: absentees || null,
+        one_line_summary: oneLineSummary || null,
+        short_description: shortDescription || null,
+        detailed_description: detailedDescription || null,
+        discussion_points: discussionPoints || null,
+        decisions_taken: decisionsTaken || null,
+        action_items: actionItems || null,
+        responsible_person: responsiblePerson || null,
+        target_date: targetDate || null,
+        next_steps: nextSteps || null,
+        remarks: remarks || null,
+        file_path: filePath || null,
+        file_name: fileName || null,
+        file_size: fileSize || null,
+        status: status || 'Draft',
+        version: 1,
+        created_by: createdBy || 'System',
+        created_by_name: createdByName || 'System'
+      };
+
+      const fields = Object.keys(meetingData);
+      const placeholders = fields.map(() => '?').join(', ');
+      const values = fields.map(k => (meetingData as any)[k]);
+
+      const result = await execute(
+        `INSERT INTO meetings (${fields.join(', ')}) VALUES (${placeholders})`,
+        values
+      );
+
+      const meetingDbId = result.insertId;
+
+      // Add to audit logs
+      await execute(
+        "INSERT INTO meeting_audit_logs (meeting_id, action, performed_by, performed_by_name, details) VALUES (?, ?, ?, ?, ?)",
+        [meetingId, 'Created', createdBy || 'System', createdByName || 'System', `MOM record created (${creationMethod === 'upload' ? 'Upload method' : 'Template method'})`]
+      );
+
+      res.json({ id: meetingDbId, meeting_id: meetingId, ...meetingData });
+    } catch (error: any) {
+      console.error('[Meetings API] Creation failed:', error.message);
+      res.status(500).json({ error: 'Failed to create meeting: ' + error.message });
+    }
+  });
+
+  // PUT /api/meetings/:id - Update meeting (includes version tracking snapshotting)
+  app.put('/api/meetings/:id', async (req: any, res: any) => {
+    try {
+      const { id } = req.params;
+      const { updatedBy, updatedByName, changeSummary, ...updates } = req.body;
+
+      // Get current meeting details first
+      const currentMeetings = await query('SELECT * FROM meetings WHERE id = ?', [id]);
+      if (currentMeetings.length === 0) {
+        return res.status(404).json({ error: 'Meeting not found' });
+      }
+      const current = currentMeetings[0];
+
+      const isAutoSave = updates.isAutoSave === true;
+      const newVersionNum = isAutoSave ? current.version : current.version + 1;
+
+      // Save previous version in version history if not auto-save
+      if (!isAutoSave) {
+        const templateData = JSON.stringify({
+          platform: current.platform,
+          conducted_by: current.conducted_by,
+          attendees: current.attendees,
+          absentees: current.absentees,
+          one_line_summary: current.one_line_summary,
+          short_description: current.short_description,
+          detailed_description: current.detailed_description,
+          discussion_points: current.discussion_points,
+          decisions_taken: current.decisions_taken,
+          action_items: current.action_items,
+          responsible_person: current.responsible_person,
+          target_date: current.target_date,
+          next_steps: current.next_steps,
+          remarks: current.remarks
+        });
+
+        await execute(
+          `INSERT INTO meeting_versions 
+           (meeting_db_id, meeting_id, version, title, meeting_date, status, file_path, file_name, template_data, updated_by, updated_by_name, change_summary) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            current.id,
+            current.meeting_id,
+            current.version,
+            current.title,
+            current.meeting_date,
+            current.status,
+            current.file_path,
+            current.file_name,
+            templateData,
+            updatedBy || 'System',
+            updatedByName || 'System',
+            changeSummary || 'Details updated'
+          ]
+        );
+      }
+
+      // Map request fields to SQLite columns
+      const updateData: any = {
+        title: updates.title !== undefined ? updates.title : current.title,
+        meeting_date: updates.meetingDate || updates.meeting_date || current.meeting_date,
+        platform: updates.platform !== undefined ? updates.platform : current.platform,
+        conducted_by: updates.conductedBy !== undefined ? updates.conductedBy : (updates.conducted_by !== undefined ? updates.conducted_by : current.conducted_by),
+        attendees: updates.attendees !== undefined ? updates.attendees : current.attendees,
+        absentees: updates.absentees !== undefined ? updates.absentees : current.absentees,
+        one_line_summary: updates.oneLineSummary !== undefined ? updates.oneLineSummary : (updates.one_line_summary !== undefined ? updates.one_line_summary : current.one_line_summary),
+        short_description: updates.shortDescription !== undefined ? updates.shortDescription : (updates.short_description !== undefined ? updates.short_description : current.short_description),
+        detailed_description: updates.detailedDescription !== undefined ? updates.detailedDescription : (updates.detailed_description !== undefined ? updates.detailed_description : current.detailed_description),
+        discussion_points: updates.discussionPoints !== undefined ? updates.discussionPoints : (updates.discussion_points !== undefined ? updates.discussion_points : current.discussion_points),
+        decisions_taken: updates.decisionsTaken !== undefined ? updates.decisionsTaken : (updates.decisions_taken !== undefined ? updates.decisions_taken : current.decisions_taken),
+        action_items: updates.actionItems !== undefined ? updates.actionItems : (updates.action_items !== undefined ? updates.action_items : current.action_items),
+        responsible_person: updates.responsiblePerson !== undefined ? updates.responsiblePerson : (updates.responsible_person !== undefined ? updates.responsible_person : current.responsible_person),
+        target_date: updates.targetDate !== undefined ? updates.targetDate : (updates.target_date !== undefined ? updates.target_date : current.target_date),
+        next_steps: updates.nextSteps !== undefined ? updates.nextSteps : (updates.next_steps !== undefined ? updates.next_steps : current.next_steps),
+        remarks: updates.remarks !== undefined ? updates.remarks : current.remarks,
+        file_path: updates.filePath !== undefined ? updates.filePath : (updates.file_path !== undefined ? updates.file_path : current.file_path),
+        file_name: updates.fileName !== undefined ? updates.fileName : (updates.file_name !== undefined ? updates.file_name : current.file_name),
+        file_size: updates.fileSize !== undefined ? updates.fileSize : (updates.file_size !== undefined ? updates.file_size : current.file_size),
+        status: updates.status !== undefined ? updates.status : current.status,
+        version: newVersionNum,
+        updated_at: new Date().toISOString()
+      };
+
+      const setClause = Object.keys(updateData).map(k => `${k} = ?`).join(', ');
+      const values = [...Object.values(updateData), id];
+
+      await execute(`UPDATE meetings SET ${setClause} WHERE id = ?`, values);
+
+      // Add to audit logs (if not auto-save)
+      if (!isAutoSave) {
+        let actionMsg = `Updated meeting fields`;
+        if (updates.status && updates.status !== current.status) {
+          actionMsg = `Status changed from ${current.status} to ${updates.status}`;
+        }
+        await execute(
+          "INSERT INTO meeting_audit_logs (meeting_id, action, performed_by, performed_by_name, details) VALUES (?, ?, ?, ?, ?)",
+          [current.meeting_id, updates.status !== current.status ? 'Status Changed' : 'Updated', updatedBy || 'System', updatedByName || 'System', actionMsg]
+        );
+      }
+
+      res.json({ id, ...current, ...updateData });
+    } catch (error: any) {
+      console.error('[Meetings API] Update failed:', error.message);
+      res.status(500).json({ error: 'Failed to update meeting: ' + error.message });
+    }
+  });
+
+  // DELETE /api/meetings/:id - Delete meeting
+  app.delete('/api/meetings/:id', async (req: any, res: any) => {
+    try {
+      const { id } = req.params;
+      const current = await query('SELECT meeting_id FROM meetings WHERE id = ?', [id]);
+      if (current.length === 0) {
+        return res.status(404).json({ error: 'Meeting not found' });
+      }
+      
+      await execute('DELETE FROM meetings WHERE id = ?', [id]);
+      await execute('DELETE FROM meeting_audit_logs WHERE meeting_id = ?', [current[0].meeting_id]);
+      
+      res.json({ success: true, message: 'Meeting deleted successfully' });
+    } catch (error: any) {
+      console.error('[Meetings API] Delete failed:', error.message);
+      res.status(500).json({ error: 'Failed to delete meeting' });
+    }
+  });
 
   // â•â•â• GLOBAL INPUT TRACKING â•â•â•
   let globalKeystrokes = 0;
@@ -5194,14 +5608,15 @@ Respond in a conversational, friendly tone.`,
       SLAEngine.monitorBreaches();
     });
 
-    // Check Firestore SLA breaches every 15 seconds
+    // Check Firestore SLA breaches every 15 minutes
     setInterval(async () => {
+      if (firestoreQuotaExceeded) return;
       try {
         await checkFirestoreSLABreaches();
       } catch (err: any) {
         console.error("Firestore SLA checking interval error:", err.message);
       }
-    }, 15000);
+    }, 900000);
   });
 }
 

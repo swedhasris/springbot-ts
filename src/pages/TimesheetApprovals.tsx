@@ -7,10 +7,10 @@ import { cn, formatDate } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 const STATUS_COLORS: Record<string, string> = {
-  Draft:     "bg-gray-100 text-gray-700",
+  Draft: "bg-gray-100 text-gray-700",
   Submitted: "bg-blue-100 text-blue-700",
-  Approved:  "bg-green-100 text-green-700",
-  Rejected:  "bg-red-100 text-red-700",
+  Approved: "bg-green-100 text-green-700",
+  Rejected: "bg-red-100 text-red-700",
 };
 
 export function TimesheetApprovals() {
@@ -133,9 +133,9 @@ export function TimesheetApprovals() {
 
   const counts = {
     Submitted: timesheets.filter(t => t.status === "Submitted").length,
-    Approved:  timesheets.filter(t => t.status === "Approved").length,
-    Rejected:  timesheets.filter(t => t.status === "Rejected").length,
-    Draft:     timesheets.filter(t => t.status === "Draft").length,
+    Approved: timesheets.filter(t => t.status === "Approved").length,
+    Rejected: timesheets.filter(t => t.status === "Rejected").length,
+    Draft: timesheets.filter(t => t.status === "Draft").length,
   };
 
   const employeeMinutesMap: Record<string, number> = {};
@@ -351,10 +351,10 @@ export function TimesheetApprovals() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Pending",  value: counts.Submitted, color: "text-blue-600" },
-          { label: "Approved", value: counts.Approved,  color: "text-green-600" },
-          { label: "Rejected", value: counts.Rejected,  color: "text-red-600" },
-          { label: "Draft",    value: counts.Draft,     color: "text-gray-600" },
+          { label: "Pending", value: counts.Submitted, color: "text-blue-600" },
+          { label: "Approved", value: counts.Approved, color: "text-green-600" },
+          { label: "Rejected", value: counts.Rejected, color: "text-red-600" },
+          { label: "Draft", value: counts.Draft, color: "text-gray-600" },
         ].map(s => (
           <div key={s.label} className="bg-white border border-border rounded-lg p-4">
             <div className="text-xs text-muted-foreground uppercase font-bold">{s.label}</div>
@@ -417,8 +417,8 @@ export function TimesheetApprovals() {
                       <div className="text-xs text-muted-foreground">{user.email || ""}</div>
                     </td>
                     <td className="p-3 text-sm">
-                      <div>{ts.week_start?.substring?.(0,10) || "—"}</div>
-                      <div className="text-xs text-muted-foreground">to {ts.week_end?.substring?.(0,10) || "—"}</div>
+                      <div>{ts.week_start?.substring?.(0, 10) || "—"}</div>
+                      <div className="text-xs text-muted-foreground">to {ts.week_end?.substring?.(0, 10) || "—"}</div>
                     </td>
                     <td className="p-3 font-bold text-sm">{(parseFloat(ts.total_hours) || 0).toFixed(0)} mins</td>
                     <td className="p-3">
@@ -478,7 +478,7 @@ export function TimesheetApprovals() {
               <div className="grid grid-cols-2 gap-4 text-sm bg-muted/20 p-4 rounded-lg">
                 <div><span className="text-muted-foreground">Status:</span> <span className={cn("px-2 py-0.5 rounded text-xs font-bold ml-1", STATUS_COLORS[viewTs.status] || "")}>{viewTs.status}</span></div>
                 <div><span className="text-muted-foreground">Total:</span> <strong className="ml-1">{(parseFloat(viewTs.total_hours) || 0).toFixed(0)} mins</strong></div>
-                <div><span className="text-muted-foreground">Week:</span> <span className="ml-1">{viewTs.week_start?.substring?.(0,10)} → {viewTs.week_end?.substring?.(0,10)}</span></div>
+                <div><span className="text-muted-foreground">Week:</span> <span className="ml-1">{viewTs.week_start?.substring?.(0, 10)} → {viewTs.week_end?.substring?.(0, 10)}</span></div>
                 <div><span className="text-muted-foreground">Submitted:</span> <span className="ml-1">{formatDate(viewTs.submitted_at)}</span></div>
                 {viewTs.rejection_reason && <div className="col-span-2 text-red-600"><span className="font-medium">Rejection:</span> {viewTs.rejection_reason}</div>}
               </div>
@@ -564,8 +564,8 @@ export function TimesheetApprovals() {
                           </p>
                           <div className="flex items-center justify-between mt-auto">
                             <div className="flex items-center gap-2">
-                               <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                               <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">AI Verified • {Math.round(act.confidence * 100 || 90)}% Confidence</span>
+                              <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">AI Verified • {Math.round(act.confidence * 100 || 90)}% Confidence</span>
                             </div>
                           </div>
                         </div>
