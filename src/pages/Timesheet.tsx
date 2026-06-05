@@ -78,24 +78,24 @@ function parseTimeStr(timeStr: string): Date | null {
   if (!timeStr) return null;
   // Normalize: remove extra spaces, uppercase
   const cleanStr = timeStr.trim().toUpperCase().replace(/\s+/g, ' ');
-  
+
   // Handle both 12:40 and 12.40
   const parts = cleanStr.match(/(\d{1,2})[:.](\d{2})/);
   if (!parts) return null;
-  
+
   let h = parseInt(parts[1]);
   const m = parseInt(parts[2]);
-  
+
   // Look for PM/AM anywhere in the string
   const isPM = cleanStr.includes("PM");
   const isAM = cleanStr.includes("AM");
-  
+
   if (isPM && h < 12) h += 12;
   if (isAM && h === 12) h = 0;
-  
+
   // Bounds check
   if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-  
+
   const d = new Date();
   d.setHours(h, m, 0, 0);
   return d;
@@ -140,12 +140,12 @@ function Section({ title, icon, defaultOpen = true, isOpen, onToggle, headerRigh
 }
 
 /* ─── Rich Text Toolbar ─── */
-function RichTextToolbar({ 
-  editorRef, 
-  onMicClick, 
-  isListening, 
-  isSupported 
-}: { 
+function RichTextToolbar({
+  editorRef,
+  onMicClick,
+  isListening,
+  isSupported
+}: {
   editorRef: React.RefObject<HTMLDivElement | null>;
   onMicClick?: () => void;
   isListening?: boolean;
@@ -174,8 +174,8 @@ function RichTextToolbar({
         <option>Awaiting parts</option>
         <option>Escalated to vendor</option>
       </select>
-      <button 
-        type="button" 
+      <button
+        type="button"
         onClick={onMicClick}
         disabled={isSupported === false}
         className={`p-1.5 hover:bg-muted rounded transition-colors ml-1 border border-transparent ${isListening ? 'bg-sn-green/15 text-sn-green border-sn-green' : ''}`}
@@ -253,7 +253,7 @@ export function Timesheet() {
           const appendText = currentHTML.endsWith(">") || !currentHTML ? text : ` ${text}`;
           editorRef.current.innerHTML = currentHTML + appendText;
           setNotesContent(editorRef.current.innerHTML);
-          
+
           // Trigger the onInput handler manually to update any dependent state
           const event = new Event('input', { bubbles: true });
           editorRef.current.dispatchEvent(event);
@@ -294,7 +294,7 @@ export function Timesheet() {
 
   // Clipboard attachments
   const [emailClipboard, setEmailClipboard] = useState<{ type: "text" | "image"; value: string; label: string } | null>(null);
-  const [waClipboard, setWaClipboard]       = useState<{ type: "text" | "image"; value: string; label: string } | null>(null);
+  const [waClipboard, setWaClipboard] = useState<{ type: "text" | "image"; value: string; label: string } | null>(null);
 
   // Open tickets
   const [openTickets, setOpenTickets] = useState<any[]>([]);
@@ -475,7 +475,7 @@ export function Timesheet() {
           body: JSON.stringify(data)
         });
       }
-      
+
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
 
       setEditingCard(null);
@@ -591,7 +591,7 @@ export function Timesheet() {
 
   function handleSendWhatsApp() {
     const phone = waCountryCode.replace("+", "") + waPhone.replace(/\D/g, "");
-    
+
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = waMessage;
     const cleanMsg = tempDiv.textContent || tempDiv.innerText || waMessage;
@@ -731,10 +731,10 @@ export function Timesheet() {
       {/* ═══ TOP ACTION BAR ═══ */}
       <div className="flex items-center justify-between bg-card p-3 border border-border rounded-lg shadow-sm">
         <div className="flex items-center gap-3">
-          <button 
+          <button
             type="button"
-            onClick={() => navigate(-1)} 
-            className="p-1.5 hover:bg-muted rounded transition-colors" 
+            onClick={() => navigate(-1)}
+            className="p-1.5 hover:bg-muted rounded transition-colors"
             title="Back to Previous Page"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />
@@ -743,23 +743,16 @@ export function Timesheet() {
           <button onClick={copyCurrentEntry} className="p-1.5 hover:bg-muted rounded transition-colors" title="Copy"><Copy className="w-4 h-4" /></button>
           <button onClick={() => window.print()} className="p-1.5 hover:bg-muted rounded transition-colors" title="Print"><Printer className="w-4 h-4" /></button>
           <button className="p-1.5 hover:bg-muted rounded transition-colors" title="Refresh" onClick={handleRefreshPage}><RefreshCw className="w-4 h-4" /></button>
-          <div className="relative group">
-            <button
-              onClick={saveEntry}
-              disabled={saving || !canEdit || editingCard?.is_system_generated === 1}
-              className="flex items-center gap-2 bg-sn-green text-sn-dark px-4 py-2 rounded font-semibold text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-              <Save className="w-4 h-4" /> Save & Return
-            </button>
-            {editingCard?.is_system_generated === 1 && (
-              <div className="absolute top-full mt-1 hidden group-hover:block bg-sn-dark text-white text-[10px] p-1.5 rounded shadow whitespace-nowrap z-50">
-                System-generated entries cannot be edited.
-              </div>
-            )}
-          </div>
+          <button
+            onClick={saveEntry}
+            disabled={saving || !canEdit}
+            className="flex items-center gap-2 bg-sn-green text-sn-dark px-4 py-2 rounded font-semibold text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            <Save className="w-4 h-4" /> Save & Return
+          </button>
           <div className="flex items-center gap-1 text-sm text-muted-foreground">
             <History className="w-4 h-4" />
-            <select 
+            <select
               className="bg-transparent border-none outline-none text-sm cursor-pointer"
               onChange={(e) => {
                 const val = e.target.value;
@@ -779,21 +772,7 @@ export function Timesheet() {
               ))}
             </select>
           </div>
-          <div className="relative group flex items-center">
-            <button 
-              onClick={handleDeleteTopAction} 
-              disabled={editingCard?.is_system_generated === 1}
-              className="p-1.5 hover:bg-muted rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
-              title="Delete"
-            >
-              <Trash2 className="w-4 h-4 text-red-500" />
-            </button>
-            {editingCard?.is_system_generated === 1 && (
-              <div className="absolute top-full mt-1 hidden group-hover:block bg-sn-dark text-white text-[10px] p-1.5 rounded shadow whitespace-nowrap z-50 right-0">
-                System-generated entries cannot be deleted.
-              </div>
-            )}
-          </div>
+          <button onClick={handleDeleteTopAction} className="p-1.5 hover:bg-muted rounded transition-colors" title="Delete"><Trash2 className="w-4 h-4 text-red-500" /></button>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -814,10 +793,10 @@ export function Timesheet() {
 
 
       {/* ═══ OPEN TICKETS SECTION ═══ */}
-      <Section 
-        title="Open Tickets" 
-        icon={<Ticket className="w-4 h-4" />} 
-        isOpen={openTicketsOpen} 
+      <Section
+        title="Open Tickets"
+        icon={<Ticket className="w-4 h-4" />}
+        isOpen={openTicketsOpen}
         onToggle={() => setOpenTicketsOpen(!openTicketsOpen)}
       >
         <div className="p-5">
@@ -856,9 +835,9 @@ export function Timesheet() {
                     </div>
                     <div className="flex-shrink-0">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${ticket.priority?.includes("Critical") ? "bg-red-600 text-white" :
-                          ticket.priority?.includes("High") ? "bg-red-100 text-red-700" :
-                            ticket.priority?.includes("Moderate") ? "bg-orange-100 text-orange-700" :
-                              "bg-blue-100 text-blue-700"
+                        ticket.priority?.includes("High") ? "bg-red-100 text-red-700" :
+                          ticket.priority?.includes("Moderate") ? "bg-orange-100 text-orange-700" :
+                            "bg-blue-100 text-blue-700"
                         }`}>
                         {ticket.priority || "4 - Low"}
                       </span>
@@ -906,53 +885,31 @@ export function Timesheet() {
 
           {activeTab === "time" && (
             <div className="space-y-4">
-              {/* System Generated Banner */}
-              {editingCard?.is_system_generated === 1 && (
-                <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full flex items-center gap-1 border border-amber-200">
-                      🔒 System Generated
-                    </span>
-                    <span className="text-xs text-amber-800 font-medium">This entry was generated by the AI Tracker and cannot be modified.</span>
-                  </div>
-                  {editingCard.ticket_number && (
-                    <div className="flex items-center gap-1 text-xs">
-                      <span className="text-muted-foreground font-medium">Incident:</span>
-                      <Link to={`/tickets/${editingCard.ticket_number}`} className="font-bold text-blue-600 hover:underline flex items-center gap-0.5">
-                        {editingCard.ticket_number}
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Time Fields Row */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div>
                   <label className="text-xs text-muted-foreground font-medium block mb-1">Start Time: <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <input type="text" value={startTime} 
-                      disabled={editingCard?.is_system_generated === 1}
+                    <input type="text" value={startTime}
                       onChange={e => {
                         setStartTime(e.target.value);
                         calculateDuration(e.target.value, endTime);
                       }}
                       placeholder="7:00 AM"
-                      className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 pr-8 disabled:bg-muted/50 disabled:opacity-70" />
+                      className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 pr-8" />
                     <Clock className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                   </div>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground font-medium block mb-1">End Time:</label>
                   <div className="relative">
-                    <input type="text" value={endTime} 
-                      disabled={editingCard?.is_system_generated === 1}
+                    <input type="text" value={endTime}
                       onChange={e => {
                         setEndTime(e.target.value);
                         calculateDuration(startTime, e.target.value);
                       }}
                       placeholder="5:00 PM"
-                      className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 pr-8 disabled:bg-muted/50 disabled:opacity-70" />
+                      className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 pr-8" />
                     <Clock className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                   </div>
                 </div>
@@ -960,22 +917,19 @@ export function Timesheet() {
                 <div>
                   <label className="text-xs text-muted-foreground font-medium block mb-1">Actual Mins:</label>
                   <input type="text" value={actualHrs} onChange={e => setActualHrs(e.target.value)}
-                    disabled={editingCard?.is_system_generated === 1}
-                    className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 disabled:bg-muted/50 disabled:opacity-70" />
+                    className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8" />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground font-medium block mb-1">Work Type: <span className="text-red-500">*</span></label>
                   <select value={workType} onChange={e => setWorkType(e.target.value)}
-                    disabled={editingCard?.is_system_generated === 1}
-                    className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 disabled:bg-muted/50 disabled:opacity-70">
+                    className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8">
                     {WORK_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground font-medium block mb-1">Billable: <span className="text-red-500">*</span></label>
                   <select value={billable} onChange={e => setBillable(e.target.value)}
-                    disabled={editingCard?.is_system_generated === 1}
-                    className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 disabled:bg-muted/50 disabled:opacity-70">
+                    className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8">
                     {BILLABLE_OPTIONS.map(b => <option key={b}>{b}</option>)}
                   </select>
                 </div>
@@ -985,9 +939,8 @@ export function Timesheet() {
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1">Short Description:</label>
                 <input type="text" value={shortDescription} onChange={e => setShortDescription(e.target.value)}
-                  disabled={editingCard?.is_system_generated === 1}
                   placeholder="Brief description of work done..."
-                  className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8 disabled:bg-muted/50 disabled:opacity-70" />
+                  className="w-full p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8" />
               </div>
 
               {/* Notes Editor */}
@@ -999,14 +952,14 @@ export function Timesheet() {
                 <div className="border border-border rounded-lg overflow-hidden">
                   <div
                     ref={editorRef}
-                    contentEditable={canEdit && editingCard?.is_system_generated !== 1}
+                    contentEditable={canEdit}
                     onInput={handleEditorInput}
-                    className={`min-h-[200px] p-3 text-sm outline-none focus:ring-1 focus:ring-inset focus:ring-sn-green ${editingCard?.is_system_generated === 1 ? 'bg-muted/50 opacity-70' : 'bg-card'}`}
+                    className="min-h-[200px] p-3 text-sm outline-none focus:ring-1 focus:ring-inset focus:ring-sn-green bg-card"
                     data-placeholder="Enter notes..."
                     suppressContentEditableWarning
                   />
-                  <RichTextToolbar 
-                    editorRef={editorRef} 
+                  <RichTextToolbar
+                    editorRef={editorRef}
                     onMicClick={() => speechControllerRef.current?.toggle()}
                     isListening={speechListening}
                     isSupported={speechSupported}
@@ -1020,7 +973,7 @@ export function Timesheet() {
               </div>
 
               {/* Add Internal Time Note */}
-              <button 
+              <button
                 type="button"
                 onClick={() => {
                   setNoteInternal(true);
@@ -1093,31 +1046,16 @@ export function Timesheet() {
                             <td className="p-2">{card.work_type || card.task || "-"}</td>
                             <td className="p-2">{card.billable || "-"}</td>
                             <td className="p-2 max-w-[200px] truncate">{card.description || "-"}</td>
-                            <td className="p-2 max-w-[200px] truncate">
-                              {card.ticket_number && (
-                                <Link to={`/tickets/${card.ticket_number}`} className="font-bold text-blue-600 hover:underline mr-1" onClick={e => e.stopPropagation()}>
-                                  [{card.ticket_number}]
-                                </Link>
-                              )}
-                              {card.short_description || "–"}
-                            </td>
+                            <td className="p-2 max-w-[200px] truncate">{card.short_description || "–"}</td>
                             <td className="p-2">
                               {canEdit && (
                                 <div className="flex gap-1">
                                   <button onClick={() => loadCardForEdit(card)} className="p-1 hover:bg-muted rounded" title="Edit">
                                     <FileText className="w-3 h-3" />
                                   </button>
-                                  {card.is_system_generated === 1 ? (
-                                    <div className="relative group">
-                                      <button className="p-1 opacity-30 cursor-not-allowed text-red-500 rounded" title="Cannot delete system generated entry">
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button onClick={() => deleteEntry(card.id)} className="p-1 hover:bg-red-100 text-red-500 rounded" title="Delete">
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  )}
+                                  <button onClick={() => deleteEntry(card.id)} className="p-1 hover:bg-red-100 text-red-500 rounded" title="Delete">
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
                                 </div>
                               )}
                             </td>
@@ -1141,10 +1079,10 @@ export function Timesheet() {
 
 
       {/* ═══ SEND NOTES AS EMAIL ═══ */}
-      <Section 
-        title="Send Notes as Email" 
-        icon={<Mail className="w-4 h-4 text-blue-600" />} 
-        isOpen={sendEmailOpen} 
+      <Section
+        title="Send Notes as Email"
+        icon={<Mail className="w-4 h-4 text-blue-600" />}
+        isOpen={sendEmailOpen}
         onToggle={() => setSendEmailOpen(!sendEmailOpen)}
       >
         <div className="p-5 space-y-3">
@@ -1170,7 +1108,7 @@ export function Timesheet() {
             <label className="text-xs text-muted-foreground font-medium col-span-1">Cc:</label>
             <div className="col-span-5 flex items-center gap-2">
               <input type="checkbox" checked={emailCc} onChange={e => setEmailCc(e.target.checked)} className="w-4 h-4 accent-blue-600 rounded" />
-              <input 
+              <input
                 type="text"
                 value={emailCcEmails}
                 onChange={e => setEmailCcEmails(e.target.value)}

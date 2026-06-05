@@ -16,6 +16,7 @@ import { ActivityTimeline } from "../components/ActivityTimeline";
 import { SLADelayDialog } from "../components/SLADelayDialog";
 import { createDefaultSlaDelayMeta, getEffectiveSlaDelayState, type SlaDelayLogEntry, type SlaDelayMeta, type SlaDelayResponseType } from "../lib/slaDelayUtils";
 import { useActivityTracker } from "../contexts/ActivityTrackerContext";
+import { SaveActivityModal, type SessionFormType } from "../components/SaveActivityModal";
 
 export function TicketDetail() {
   const { id } = useParams();
@@ -42,6 +43,21 @@ export function TicketDetail() {
   const [aiProcessing, setAiProcessing] = useState(false);
   const [aiNotes, setAiNotes] = useState<WorkAnalysis | null>(null);
   const [aiStatusMessage, setAiStatusMessage] = useState("");
+  const [showSessionPopup, setShowSessionPopup] = useState(false);
+  const [savingSession, setSavingSession] = useState(false);
+  const [sessionForm, setSessionForm] = useState<SessionFormType>({
+    entryDate: new Date().toISOString().split("T")[0],
+    startTime: "",
+    endTime: "",
+    minutesWorked: 0,
+    task: "Ticket Resolution",
+    customTask: "",
+    workType: "Support",
+    shortDescription: "",
+    description: "",
+    notes: "",
+    billable: "Billable",
+  });
   const [timelineRefresh, setTimelineRefresh] = useState(0);
   const [pastSessions, setPastSessions] = useState<any[]>([]);
 
@@ -133,6 +149,24 @@ export function TicketDetail() {
 
   useEffect(() => {
     if (!id) return;
+    
+    // Resolve ticket_number to actual document ID if needed
+    if (id.startsWith('INC') || id.startsWith('REQ') || id.startsWith('TSK')) {
+      const q = query(collection(db, "tickets"), where("number", "==", id));
+      getDocs(q).then((snap) => {
+        if (!snap.empty) {
+          const actualId = snap.docs[0].id;
+          navigate(`/tickets/${actualId}`, { replace: true });
+        } else {
+          navigate("/tickets");
+        }
+      }).catch((e) => {
+        console.error(e);
+        navigate("/tickets");
+      });
+      return;
+    }
+
     const unsubscribe = onSnapshot(doc(db, "tickets", id), (docSnapshot) => {
       if (docSnapshot.exists()) {
         const data = { id: docSnapshot.id, ...docSnapshot.data() };
@@ -554,7 +588,34 @@ export function TicketDetail() {
     setAiProcessing(true);
     setAiStatusMessage("🛑 Stopping AI session...");
     try {
+      const now = new Date();
+      const startMs = Date.now() - (trackerElapsed * 1000);
+      const start = new Date(startMs);
+      const calculatedMinutes = Math.max(1, Math.round(trackerElapsed / 60));
+
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const formatTimeForInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      const formatDateForInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+      const initialStart = formatTimeForInput(start);
+      const initialEnd = formatTimeForInput(now);
+      const initialDate = formatDateForInput(now);
+
       await stopWatcher();
+
+      setSessionForm({
+        entryDate: initialDate,
+        startTime: initialStart,
+        endTime: initialEnd,
+        minutesWorked: calculatedMinutes,
+        task: "Ticket Resolution",
+        customTask: "",
+        workType: "Support",
+        shortDescription: trackerSummary ? trackerSummary.substring(0, 100) : "",
+        description: trackerSummary || "",
+        notes: "",
+        billable: "Billable"
+      });
 
       // Post "AI Work Session Completed" to timeline
       await fetch(`/api/tickets/${id}/activities`, {
@@ -572,12 +633,87 @@ export function TicketDetail() {
       
       setAiStatusMessage("✅ Session completed!");
       setTimeout(() => setAiStatusMessage(""), 3000);
+      
+      setShowSessionPopup(true);
     } catch (error) {
       console.error("[AI WorkSession] Stop analysis failed:", error);
       setAiStatusMessage("⚠️ Failed to stop properly");
       setTimeout(() => setAiStatusMessage(""), 3000);
     } finally {
       setAiProcessing(false);
+    }
+  };
+
+  const handleSaveSession = async () => {
+    if (!user) return;
+    if (!sessionForm.shortDescription.trim()) {
+      alert("Short Description is required.");
+      return;
+    }
+
+    setSavingSession(true);
+    try {
+      const userId = user.uid;
+      const finalTask = sessionForm.task === "Other..." ? sessionForm.customTask : sessionForm.task;
+      const finalShortDesc = ticket?.number 
+        ? `[${ticket.number}] ${sessionForm.shortDescription}`
+        : sessionForm.shortDescription;
+
+      const entryD = new Date(sessionForm.entryDate + "T12:00:00");
+      const day = entryD.getDay();
+      const diff = entryD.getDate() - day + (day === 0 ? -6 : 1);
+      const mon = new Date(entryD);
+      mon.setDate(diff);
+      const monStr = mon.toISOString().split("T")[0];
+      const sun = new Date(mon.getTime() + 6 * 86400000);
+      const sunStr = sun.toISOString().split("T")[0];
+
+      const tsRes = await fetch("/api/timesheets/get-or-create", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          week_start: monStr,
+          week_end: sunStr
+        })
+      });
+      const ts = await tsRes.json();
+
+      const response = await fetch("/api/time-cards", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          timesheet_id: ts.id,
+          user_id: userId,
+          entry_date: sessionForm.entryDate,
+          start_time: sessionForm.startTime,
+          end_time: sessionForm.endTime,
+          hours_worked: sessionForm.minutesWorked,
+          task: finalTask,
+          work_type: sessionForm.workType,
+          billable: sessionForm.billable,
+          description: sessionForm.description,
+          short_description: finalShortDesc,
+          notes: sessionForm.notes,
+          status: 'Draft',
+          ticket_number: ticket?.number || null,
+          ticket_id: id,
+          is_system_generated: 1
+        })
+      });
+
+      if (response.ok) {
+        setPostMessage({ text: "Session activity details saved successfully! Calendar entry created.", type: 'success' });
+        setTimeout(() => setPostMessage(null), 3000);
+        setShowSessionPopup(false);
+      } else {
+        alert("Failed to save activity details.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error saving session details.");
+    } finally {
+      setSavingSession(false);
     }
   };
 
@@ -1803,6 +1939,16 @@ export function TicketDetail() {
         form={slaDelayForm}
         onChange={updateSlaDelayField}
         onSubmit={handleSubmitSlaDelay}
+      />
+
+      <SaveActivityModal
+        show={showSessionPopup}
+        onClose={() => setShowSessionPopup(false)}
+        sessionForm={sessionForm}
+        setSessionForm={setSessionForm}
+        onSave={handleSaveSession}
+        savingSession={savingSession}
+        selectedIncident={ticket?.number}
       />
     </div>
   );

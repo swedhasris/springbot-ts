@@ -160,7 +160,7 @@ export function TimesheetWeekly() {
       await fetch(`/api/timesheets/${timesheet.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           status: "Submitted",
           screenshot_url: screenshotUrl,
           submitted_at: new Date().toISOString()
@@ -293,15 +293,8 @@ export function TimesheetWeekly() {
                         ? 'bg-blue-50 border-blue-200'
                         : 'bg-muted/30 border-border'}`}>
                       <div className="font-semibold truncate pr-10 flex items-center gap-1">
-                        {entry.is_system_generated === 1 ? (
-                          <span title="System Generated Ticket Session">🔒</span>
-                        ) : (entry.short_description || '').startsWith('[AI Tracked]') ? (
+                        {(entry.short_description || '').startsWith('[AI Tracked]') && (
                           <span title="Auto-tracked by AI Activity Tracker">🤖</span>
-                        ) : null}
-                        {entry.ticket_number && (
-                          <Link to={`/tickets/${entry.ticket_number}`} className="text-blue-600 hover:underline mr-1" onClick={e => e.stopPropagation()}>
-                            {entry.ticket_number}
-                          </Link>
                         )}
                         {entry.task}
                       </div>
@@ -311,20 +304,12 @@ export function TimesheetWeekly() {
                       )}
                       {canEdit && (
                         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5">
-                          {entry.is_system_generated === 1 ? (
-                            <button className="p-1 opacity-30 cursor-not-allowed text-red-500 rounded" title="Cannot edit or delete system generated entry">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          ) : (
-                            <>
-                              <button onClick={(e) => { e.stopPropagation(); openEdit(entry); }} className="p-1 hover:bg-white rounded" title="Edit">
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); deleteEntry(entry.id); }} className="p-1 hover:bg-red-100 text-red-500 rounded" title="Delete">
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </>
-                          )}
+                          <button onClick={() => openEdit(entry)} className="p-1 hover:bg-white rounded" title="Edit">
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button onClick={() => deleteEntry(entry.id)} className="p-1 hover:bg-red-100 text-red-500 rounded" title="Delete">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       )}
                     </div>
@@ -382,18 +367,18 @@ export function TimesheetWeekly() {
                   {tasks.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Minutes Worked <span className="text-red-500">*</span></label>
-                  <input
-                    type="number"
-                    step="5"
-                    value={form.hours}
-                    onChange={e => setForm({ ...form, hours: e.target.value })}
-                    className="w-full p-2.5 border border-border rounded-lg outline-none focus:ring-2 focus:ring-sn-green/20 focus:border-sn-green transition-all"
-                    placeholder="Enter minutes (e.g. 30, 45, 60)"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Max 1440 minutes per day total</p>
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Minutes Worked <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  step="5"
+                  value={form.hours}
+                  onChange={e => setForm({ ...form, hours: e.target.value })}
+                  className="w-full p-2.5 border border-border rounded-lg outline-none focus:ring-2 focus:ring-sn-green/20 focus:border-sn-green transition-all"
+                  placeholder="Enter minutes (e.g. 30, 45, 60)"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Max 1440 minutes per day total</p>
+              </div>
               <div>
                 <label className="text-sm font-medium block mb-1">Description / Notes</label>
                 <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full p-2 border border-border rounded text-sm resize-none" placeholder="Describe the work done..." />

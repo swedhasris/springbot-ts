@@ -204,11 +204,6 @@ async function getSQLiteDb() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
-      
-      -- Migration: add columns if they don't exist
-      try { await _sqliteDb.exec("ALTER TABLE time_cards ADD COLUMN ticket_id TEXT;"); } catch (e) { /* Ignore duplicate column */ }
-      try { await _sqliteDb.exec("ALTER TABLE time_cards ADD COLUMN ticket_number TEXT;"); } catch (e) { /* Ignore duplicate column */ }
-      try { await _sqliteDb.exec("ALTER TABLE time_cards ADD COLUMN is_system_generated INTEGER DEFAULT 0;"); } catch (e) { /* Ignore duplicate column */ }
       CREATE TABLE IF NOT EXISTS ticket_activities (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ticket_id TEXT NOT NULL,
@@ -2587,11 +2582,11 @@ async function startServer() {
         if (updateData[field.dbKey] !== undefined) {
           const oldValue = normalize(ticket[field.dbKey]);
           const newValue = normalize(updateData[field.dbKey]);
-          
+
           if (oldValue !== newValue) {
             let actType = "field_change";
             let actionMsg = `Changed ${field.label} from "${oldValue || 'none'}" to "${newValue || 'none'}"`;
-            
+
             if (field.dbKey === "status") {
               actType = "status_change";
               actionMsg = `State changed to ${newValue || 'none'}`;

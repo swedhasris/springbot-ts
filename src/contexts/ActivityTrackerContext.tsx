@@ -87,7 +87,7 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
   const elapsedRef = useRef(0);
   const startTimeRef = useRef<number | null>(null);
   const prevActivityRef = useRef('');
-  
+
   const sessionIdRef = useRef<string | null>(null);
   const sessionDbIdRef = useRef<string | null>(null);
   const intervalSecRef = useRef(15);
@@ -187,7 +187,7 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
     }
 
     try {
-      const aiTimeout = setTimeout(() => {}, 15000);
+      const aiTimeout = setTimeout(() => { }, 15000);
       const res = await fetch('/api/ai/analyze-activity', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -220,7 +220,7 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
             ? { ...e, activity, description, confidence, screenshotUrl, isProcessing: false, detectedApp: d.detected_app || null, detectedWebsite: d.detected_website || null }
             : e
         ));
-        
+
         // Auto-update timesheet
         (async () => {
           try {
@@ -251,12 +251,12 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
                 if (existing) {
                   await fetch(`/api/time-cards/${existing.id}`, {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hours_worked: (parseFloat(existing.hours_worked) || 0) + mins, description, short_description: shortDesc, ticket_number: selectedIncidentRef.current || null, is_system_generated: 1 }),
+                    body: JSON.stringify({ hours_worked: (parseFloat(existing.hours_worked) || 0) + mins, description, short_description: shortDesc }),
                   });
                 } else {
                   await fetch('/api/time-cards', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ timesheet_id: ts.id, user_id: userId, entry_date: today, task, hours_worked: mins, description, short_description: shortDesc, work_type: 'Remote', billable: 'Billable', status: 'Draft', ticket_number: selectedIncidentRef.current || null, is_system_generated: 1 }),
+                    body: JSON.stringify({ timesheet_id: ts.id, user_id: userId, entry_date: today, task, hours_worked: mins, description, short_description: shortDesc, work_type: 'Remote', billable: 'Billable', status: 'Draft' }),
                   });
                 }
               }
@@ -267,13 +267,13 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
         // Persist activity entry
         fetch('/api/activity-entries', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            session_id: currentSessionId, 
-            user_id: userId, 
-            activity_label: activity, 
-            description, 
-            confidence, 
-            captured_at: snap.timestamp, 
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            user_id: userId,
+            activity_label: activity,
+            description,
+            confidence,
+            captured_at: snap.timestamp,
             screenshot_url: screenshotUrl,
             keystrokes: snap.recentKeys,
             clicks: snap.recentClicks.length,

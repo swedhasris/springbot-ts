@@ -535,9 +535,9 @@ export function Calendar() {
       <div className="bg-card border-b border-border px-4 py-2 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <button onClick={handleAddNewEntry} className="p-1.5 hover:bg-muted rounded transition-colors"><Plus className="w-4 h-4" /></button>
-          
+
           <div className="relative">
-            <button 
+            <button
               onClick={() => setShowAddDropdown(!showAddDropdown)}
               className="p-1.5 hover:bg-muted rounded transition-colors"
             >
@@ -569,8 +569,8 @@ export function Calendar() {
 
           <button onClick={loadData} className="p-1.5 hover:bg-muted rounded transition-colors"><RefreshCw className="w-4 h-4" /></button>
           <button onClick={() => window.print()} className="p-1.5 hover:bg-muted rounded transition-colors"><Printer className="w-4 h-4" /></button>
-          
-          <select 
+
+          <select
             value={displayType}
             onChange={e => setDisplayType(e.target.value as any)}
             className="text-xs border border-border rounded px-2 py-1 bg-card outline-none"
@@ -578,7 +578,7 @@ export function Calendar() {
             <option value="overlay">Display Type: Time with Schedule Overlay</option>
             <option value="calendar_only">Display Type: Calendar Only</option>
           </select>
-          
+
           <Link
             to={`/timesheet/${weekStart}`}
             className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wide hover:bg-blue-700 transition-colors"
@@ -587,7 +587,7 @@ export function Calendar() {
           </Link>
         </div>
         <div className="flex items-center gap-2">
-          <select 
+          <select
             value={viewDetails}
             onChange={e => setViewDetails(e.target.value as any)}
             className="text-xs border border-border rounded px-2 py-1 bg-card outline-none"
@@ -595,8 +595,8 @@ export function Calendar() {
             <option value="calendar_only">View: Calendar Only</option>
             <option value="with_details">View: With Details</option>
           </select>
-          
-          <select 
+
+          <select
             value={refreshInterval}
             onChange={e => setRefreshInterval(Number(e.target.value))}
             className="text-xs border border-border rounded px-2 py-1 bg-card outline-none"
@@ -605,7 +605,7 @@ export function Calendar() {
             <option value={30000}>Refresh: 30s</option>
             <option value={60000}>Refresh: 60s</option>
           </select>
-          
+
           <button className="p-1.5 hover:bg-muted rounded transition-colors"><HelpCircle className="w-4 h-4 text-muted-foreground" /></button>
         </div>
       </div>
@@ -777,13 +777,27 @@ export function Calendar() {
                           <div className="flex items-center gap-1 group/tooltip relative">
                             <Clock className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
                             <span className="text-[10px] font-bold truncate">
-                              {card.ticket_number && <span className="text-blue-600 mr-1">{card.ticket_number}</span>}
-                              ({card.hours_worked}m) {card.short_description || card.task || card.work_type || "Entry"}
+                              {(() => {
+                                const incidentMatch = (card.ticket_number || card.short_description || card.description || "").match(/INC\d{5,}/i);
+                                const incNum = incidentMatch ? incidentMatch[0].toUpperCase() : null;
+                                return incNum ? (
+                                  <>
+                                    <span className="text-blue-600 mr-1">{incNum}</span>
+                                    ({card.hours_worked}m) {card.short_description || card.task || card.work_type || "Entry"}
+                                  </>
+                                ) : (
+                                  `(${card.hours_worked}m) ${card.short_description || card.task || card.work_type || "Entry"}`
+                                );
+                              })()}
                             </span>
                             
                             {/* Hover Tooltip */}
                             <div className="absolute bottom-full left-0 mb-1 hidden group-hover/tooltip:block bg-sn-dark text-white text-[10px] p-2 rounded shadow-lg z-50 whitespace-nowrap min-w-max">
-                              {card.ticket_number && <div className="font-bold text-blue-300">{card.ticket_number}</div>}
+                              {(() => {
+                                const incidentMatch = (card.ticket_number || card.short_description || card.description || "").match(/INC\d{5,}/i);
+                                const incNum = incidentMatch ? incidentMatch[0].toUpperCase() : null;
+                                return incNum && <div className="font-bold text-blue-300">{incNum}</div>;
+                              })()}
                               <div className="font-medium">{card.short_description || card.task || card.work_type || "Entry"}</div>
                               <div className="text-gray-300">{card.hours_worked} Minutes Worked</div>
                               <div className="text-gray-400 mt-1">Logged by: {selectedUserProfile?.name || "Technician"}</div>
@@ -804,14 +818,24 @@ export function Calendar() {
                 {todoEntries.map((card, idx) => (
                   <div
                     key={card.id}
-                    className="rounded-sm border border-border bg-card px-1.5 py-0.5 text-[9px] cursor-pointer hover:bg-muted/30 truncate flex items-center gap-1"
+                    className="rounded-sm border border-border bg-card px-1.5 py-0.5 text-[9px] cursor-pointer hover:bg-muted/30 truncate flex items-center gap-1 group/tooltip relative"
                     style={{ borderLeft: `3px solid ${getEventColor(idx)}` }}
                     onClick={() => openEditPanel(card)}
                   >
                     <Clock className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
                     <span className="font-medium truncate">
-                      {card.ticket_number && <span className="text-blue-600 mr-1">{card.ticket_number}</span>}
-                      {card.short_description || card.task || card.work_type || "Entry"}
+                      {(() => {
+                        const incidentMatch = (card.ticket_number || card.short_description || card.description || "").match(/INC\d{5,}/i);
+                        const incNum = incidentMatch ? incidentMatch[0].toUpperCase() : null;
+                        return incNum ? (
+                          <>
+                            <span className="text-blue-600 mr-1 font-bold">{incNum}</span>
+                            {card.short_description || card.task || card.work_type || "Entry"}
+                          </>
+                        ) : (
+                          card.short_description || card.task || card.work_type || "Entry"
+                        );
+                      })()}
                     </span>
                   </div>
                 ))}
@@ -831,21 +855,29 @@ export function Calendar() {
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-blue-600" />
-                  <h3 className="font-bold text-sm">{editPanel.id ? "Edit Time Entry" : "New Time Entry"}</h3>
-                  {editPanel.is_system_generated === 1 && (
-                    <span className="ml-2 px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full flex items-center gap-1 border border-amber-200">
-                      🔒 System Generated
-                    </span>
-                  )}
+                  <h3 className="font-bold text-sm">{editPanel.id ? "Time Entry" : "New Time Entry"}</h3>
+                  {editPanel && (() => {
+                    const incMatch = (editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i);
+                    const isLocked = editPanel.is_system_generated === 1 || incMatch;
+                    return isLocked ? (
+                      <span className="ml-2 px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full flex items-center gap-1 border border-amber-200">
+                        🔒 Read Only
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
-                {editPanel.ticket_number && (
-                  <div className="mt-1 flex items-center gap-1 text-xs">
-                    <span className="text-muted-foreground font-medium">Incident:</span>
-                    <Link to={`/tickets/${editPanel.ticket_number}`} className="font-bold text-blue-600 hover:underline flex items-center gap-0.5">
-                      {editPanel.ticket_number}
-                    </Link>
-                  </div>
-                )}
+                {editPanel && (() => {
+                  const incMatch = (editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i);
+                  const incNum = incMatch ? incMatch[0].toUpperCase() : null;
+                  return incNum ? (
+                    <div className="mt-1 flex items-center gap-1 text-xs">
+                      <span className="text-muted-foreground font-medium">Incident:</span>
+                      <Link to={`/tickets/${incNum}`} className="font-bold text-blue-600 hover:underline flex items-center gap-0.5">
+                        {incNum}
+                      </Link>
+                    </div>
+                  ) : null;
+                })()}
               </div>
               <button onClick={() => setEditPanel(null)} className="p-1 hover:bg-muted rounded"><X className="w-5 h-5" /></button>
             </div>
@@ -860,39 +892,39 @@ export function Calendar() {
                 <div>
                   <label className="text-xs text-muted-foreground font-medium block mb-1">Start Time</label>
                   <input value={editForm.startTime} onChange={e => setEditForm(f => ({ ...f, startTime: e.target.value }))}
-                    disabled={editPanel.is_system_generated === 1}
+                    disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                     className="w-full p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green disabled:bg-muted/50 disabled:opacity-70" placeholder="7:00 AM" />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground font-medium block mb-1">End Time</label>
                   <input value={editForm.endTime} onChange={e => setEditForm(f => ({ ...f, endTime: e.target.value }))}
-                    disabled={editPanel.is_system_generated === 1}
+                    disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                     className="w-full p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green disabled:bg-muted/50 disabled:opacity-70" placeholder="5:00 PM" />
                 </div>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1">Minutes Worked</label>
                 <input type="number" step="5" value={editForm.minutesWorked} onChange={e => setEditForm(f => ({ ...f, minutesWorked: e.target.value }))}
-                  disabled={editPanel.is_system_generated === 1}
+                  disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                   className="w-full p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green disabled:bg-muted/50 disabled:opacity-70" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1">Task / Work Type</label>
                 <input value={editForm.task} onChange={e => setEditForm(f => ({ ...f, task: e.target.value }))}
-                  disabled={editPanel.is_system_generated === 1}
+                  disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                   className="w-full p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green disabled:bg-muted/50 disabled:opacity-70" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1">Short Description</label>
                 <input value={editForm.shortDescription} onChange={e => setEditForm(f => ({ ...f, shortDescription: e.target.value }))}
-                  disabled={editPanel.is_system_generated === 1}
+                  disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                   placeholder="Brief description of work done..."
                   className="w-full p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green disabled:bg-muted/50 disabled:opacity-70" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1">Billable</label>
                 <select value={editForm.billable} onChange={e => setEditForm(f => ({ ...f, billable: e.target.value }))}
-                  disabled={editPanel.is_system_generated === 1}
+                  disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                   className="w-full p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green disabled:bg-muted/50 disabled:opacity-70">
                   <option>Billable</option>
                   <option>Non-Billable</option>
@@ -902,13 +934,13 @@ export function Calendar() {
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1">Description</label>
                 <textarea value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
-                  disabled={editPanel.is_system_generated === 1}
+                  disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                   rows={4} className="w-full p-2 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green resize-none disabled:bg-muted/50 disabled:opacity-70" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1">Notes</label>
                 <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                  disabled={editPanel.is_system_generated === 1}
+                  disabled={editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                   rows={2} className="w-full p-2 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green resize-none disabled:bg-muted/50 disabled:opacity-70" placeholder="Additional notes..." />
               </div>
             </div>
@@ -916,22 +948,22 @@ export function Calendar() {
             {/* Panel Footer */}
             <div className="p-4 border-t border-border flex items-center justify-between bg-muted/10">
               <div className="relative group">
-                <button 
-                  onClick={deleteFromPanel} 
-                  disabled={!editPanel.id || editPanel.is_system_generated === 1}
+                <button
+                  onClick={deleteFromPanel}
+                  disabled={!editPanel.id || (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))}
                   className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Delete
                 </button>
-                {editPanel.is_system_generated === 1 && (
+                {editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i)) && (
                   <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block bg-sn-dark text-white text-[10px] p-1.5 rounded shadow whitespace-nowrap z-50">
-                    System-generated entries cannot be deleted.
+                    Incident-linked entries cannot be deleted manually.
                   </div>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => setEditPanel(null)} className="px-3 py-1.5 border border-border rounded text-xs hover:bg-muted transition-colors">Close</button>
-                {editPanel.is_system_generated !== 1 && (
+                {!(editPanel && (editPanel.is_system_generated === 1 || !!(editPanel.ticket_number || editPanel.short_description || editPanel.description || "").match(/INC\d{5,}/i))) && (
                   <button onClick={saveEditPanel} disabled={editSaving}
                     className="flex items-center gap-1 bg-sn-green text-sn-dark px-4 py-1.5 rounded text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-opacity">
                     <Save className="w-3.5 h-3.5" /> {editSaving ? "Saving..." : "Save"}
