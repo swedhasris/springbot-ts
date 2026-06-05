@@ -712,3 +712,21 @@ html:not(.dark) .dark textarea {
   background-color: #0b0f19 !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
+
+/* --- AI Activity Tracker Page Dark Mode Specific Custom Overrides --- */
+.dark .activity-tracker-container input:not([type="checkbox"]):not([type="radio"]),
+.dark .activity-tracker-container select,
+.dark .activity-tracker-container textarea,
+.dark .activity-tracker-modal input:not([type="checkbox"]):not([type="radio"]),
+.dark .activity-tracker-modal select,
+.dark .activity-tracker-modal textarea {
+  background-color: #111827 !important;
+  border-color: #2D3B55 !important;
+  color: #FFFFFF !important;
+}
+
+.dark .activity-tracker-container select option,
+.dark .activity-tracker-modal select option {
+  background-color: #111827 !important;
+  color: #FFFFFF !important;
+}

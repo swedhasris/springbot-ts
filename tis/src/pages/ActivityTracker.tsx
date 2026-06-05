@@ -71,7 +71,7 @@ function FeedEntry({ entry, onPreview }: { key?: React.Key; entry: ActivityEntry
     return (
       <div className="flex gap-3">
         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-lg">{entry.appIcon || '⏳'}</div>
-        <div className="flex-1 bg-blue-50 border border-blue-200 rounded-2xl rounded-tl-sm px-4 py-3">
+        <div className="flex-1 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl rounded-tl-sm px-4 py-3">
           <div className="flex items-center gap-2 text-sm text-blue-600 font-medium">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
             Analyzing {entry.appName}...
@@ -85,12 +85,12 @@ function FeedEntry({ entry, onPreview }: { key?: React.Key; entry: ActivityEntry
     return (
       <div className="flex gap-3">
         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center text-lg">💤</div>
-        <div className="flex-1 bg-amber-50 border border-amber-200 rounded-2xl rounded-tl-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 bg-amber-100/60 border-b border-amber-200">
-            <span className="text-xs font-bold text-amber-800">😴 User Idle</span>
-            <span className="text-xs text-amber-600 font-mono">{fmtTime(entry.timestamp)}</span>
+        <div className="flex-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl rounded-tl-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-amber-100/60 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/50">
+            <span className="text-xs font-bold text-amber-800 dark:text-amber-300">😴 User Idle</span>
+            <span className="text-xs text-amber-600 dark:text-amber-400 font-mono">{fmtTime(entry.timestamp)}</span>
           </div>
-          <div className="px-4 py-3 text-sm text-amber-700">{entry.description}</div>
+          <div className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{entry.description}</div>
         </div>
       </div>
     );
@@ -101,17 +101,17 @@ function FeedEntry({ entry, onPreview }: { key?: React.Key; entry: ActivityEntry
   return (
     <div className="flex gap-3">
       {/* App icon avatar */}
-      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm border ${entry.appColor}`}>
+      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm border ${entry.appColor} dark:border-[#2D3B55]`}>
         {entry.appIcon}
       </div>
 
       {/* Card */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-2xl rounded-tl-sm shadow-sm overflow-hidden">
+      <div className="flex-1 bg-white dark:bg-[#111827] border border-slate-200 dark:border-[#2D3B55] rounded-2xl rounded-tl-sm shadow-sm overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 dark:bg-[#1A2332] border-b border-slate-100 dark:border-[#2D3B55]">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <span className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border shadow-sm ${entry.appColor}`}>
+            <span className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border shadow-sm ${entry.appColor} dark:border-[#2D3B55]`}>
               <span className="text-sm leading-none">{entry.appIcon}</span>
               {/* Show Gemini-detected app if different from tab-detected */}
               {entry.detectedApp && entry.detectedApp !== entry.appName
@@ -120,24 +120,24 @@ function FeedEntry({ entry, onPreview }: { key?: React.Key; entry: ActivityEntry
             </span>
             {/* Show detected website if Gemini found one */}
             {entry.detectedWebsite && (
-              <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+              <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50 px-2 py-0.5 rounded-md">
                 🌐 {entry.detectedWebsite}
               </span>
             )}
-            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-medium">{entry.appCategory}</span>
-            <span className="text-xs text-slate-500">› {entry.pageType}</span>
+            <span className="text-[10px] text-slate-400 dark:text-[#94A3B8] bg-slate-100 dark:bg-[#111827] px-1.5 py-0.5 rounded font-medium">{entry.appCategory}</span>
+            <span className="text-xs text-slate-500 dark:text-[#CBD5E1]">› {entry.pageType}</span>
             {entry.ticketNumber && (
-              <span className="text-xs font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">{entry.ticketNumber}</span>
+              <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 px-2 py-0.5 rounded-md">{entry.ticketNumber}</span>
             )}
           </div>
-          <div className="flex items-center gap-1 text-xs text-slate-400 flex-shrink-0 ml-2">
+          <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-[#94A3B8] flex-shrink-0 ml-2">
             <Clock className="w-3 h-3" />{fmtTime(entry.timestamp)}
           </div>
         </div>
 
         {/* Screenshot */}
         {preview ? (
-          <div className="relative group cursor-zoom-in border-b border-slate-100" onClick={() => onPreview(preview)}>
+          <div className="relative group cursor-zoom-in border-b border-slate-100 dark:border-[#2D3B55]" onClick={() => onPreview(preview)}>
             <img src={preview} alt="Activity" className="w-full block" style={{ maxHeight: '220px', objectFit: 'contain', background: '#0f172a' }} loading="lazy" />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
               <Maximize2 className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-lg transition-opacity" />
@@ -154,54 +154,54 @@ function FeedEntry({ entry, onPreview }: { key?: React.Key; entry: ActivityEntry
             )}
           </div>
         ) : (
-          <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-2 text-xs text-slate-400 italic">
+          <div className="px-4 py-2 border-b border-slate-100 dark:border-[#2D3B55] flex items-center gap-2 text-xs text-slate-400 dark:text-[#94A3B8] italic bg-white dark:bg-[#111827]">
             <Camera className="w-3 h-3" /> No screenshot
           </div>
         )}
 
         {/* AI Description */}
-        <div className="px-4 py-3 border-b border-slate-100">
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-[#2D3B55]">
           <div className="flex items-start gap-2">
             <Bot className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
             <div>
               <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wide block mb-0.5">🧠 AI Analysis</span>
-              <p className="text-sm text-slate-700 leading-relaxed">{entry.description}</p>
+              <p className="text-sm text-slate-700 dark:text-[#CBD5E1] leading-relaxed">{entry.description}</p>
             </div>
           </div>
         </div>
 
         {/* Stats */}
-        <div className="px-4 py-2 flex items-center gap-4 flex-wrap bg-slate-50/50 border-t border-slate-100">
+        <div className="px-4 py-2 flex items-center gap-4 flex-wrap bg-slate-50/50 dark:bg-[#1A2332] border-t border-slate-100 dark:border-[#2D3B55]">
           {entry.clicks.length > 0 ? (
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-[#CBD5E1]">
               <MousePointer className="w-3.5 h-3.5 text-blue-500" />
               <span className="font-medium">Clicked:</span>
-              <span className="text-slate-500">{entry.clicks.slice(-3).join(' → ')}</span>
+              <span className="text-slate-500 dark:text-[#94A3B8]">{entry.clicks.slice(-3).join(' → ')}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-[#94A3B8]">
               <MousePointer className="w-3.5 h-3.5" />
               <span>No clicks</span>
             </div>
           )}
-          <div className={`flex items-center gap-1.5 text-xs ${entry.keystrokes > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
+          <div className={`flex items-center gap-1.5 text-xs ${entry.keystrokes > 0 ? 'text-slate-600 dark:text-[#CBD5E1]' : 'text-slate-400 dark:text-[#94A3B8]'}`}>
             <Keyboard className={`w-3.5 h-3.5 ${entry.keystrokes > 0 ? 'text-purple-500' : ''}`} />
             <span className={entry.keystrokes > 0 ? 'font-medium' : ''}>{entry.keystrokes} keystrokes</span>
           </div>
           {entry.idleSeconds > 30 && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-500">
+            <div className="flex items-center gap-1.5 text-xs text-amber-500 dark:text-amber-400">
               <Clock className="w-3.5 h-3.5" />
               <span>Idle {entry.idleSeconds}s</span>
             </div>
           )}
           {entry.scrollDepth > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-[#94A3B8]">
               <Activity className="w-3.5 h-3.5" />
               <span>Scroll {entry.scrollDepth}%</span>
             </div>
           )}
           {entry.confidence > 0 && (
-            <div className="ml-auto text-[10px] text-slate-300 font-mono">{Math.round(entry.confidence * 100)}% confidence</div>
+            <div className="ml-auto text-[10px] text-slate-300 dark:text-[#94A3B8] font-mono">{Math.round(entry.confidence * 100)}% confidence</div>
           )}
         </div>
       </div>
@@ -500,33 +500,33 @@ export function ActivityTracker() {
     <>
       {previewModal && <ScreenshotModal src={previewModal} onClose={() => setPreviewModal(null)} />}
 
-      <div className="max-w-5xl mx-auto space-y-5">
+      <div className="max-w-5xl mx-auto space-y-5 activity-tracker-container dark:bg-[#0B1220] dark:p-6 dark:rounded-2xl dark:border dark:border-[#2D3B55]">
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground dark:text-white flex items-center gap-2">
               <Monitor className="w-6 h-6 text-blue-600" /> AI Activity Tracker
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-sm text-muted-foreground dark:text-[#94A3B8] mt-0.5">
               Detects apps, captures screenshots, generates AI descriptions, updates timesheet automatically.
             </p>
           </div>
-          <button onClick={() => setShowSettings(s => !s)} className="p-2 rounded-lg hover:bg-muted transition-colors">
-            <Settings className="w-5 h-5 text-muted-foreground" />
+          <button onClick={() => setShowSettings(s => !s)} className="p-2 rounded-lg hover:bg-muted dark:hover:bg-[#111827] transition-colors">
+            <Settings className="w-5 h-5 text-muted-foreground dark:text-[#94A3B8]" />
           </button>
         </div>
 
         {/* Settings */}
         {showSettings && (
-          <div className="bg-white border border-border rounded-xl p-5 shadow-sm space-y-4">
+          <div className="bg-white dark:bg-[#1A2332] border border-border dark:border-[#2D3B55] rounded-xl p-5 shadow-sm space-y-4 text-foreground dark:text-white">
             <div>
               <h3 className="text-sm font-bold mb-3">Snapshot interval</h3>
               <div className="flex items-center gap-2 flex-wrap">
                 {[10, 15, 20, 30, 60].map(s => (
                   <button key={s} onClick={() => setIntervalSec(s)} disabled={isActive}
                     className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors disabled:opacity-50
-                      ${intervalSec === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-muted-foreground border-border hover:border-blue-400'}`}>
+                      ${intervalSec === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-[#111827] text-muted-foreground dark:text-[#CBD5E1] border-border dark:border-[#2D3B55] hover:border-blue-400'}`}>
                     {s}s
                   </button>
                 ))}
@@ -538,7 +538,7 @@ export function ActivityTracker() {
                 value={selectedFrequency}
                 onChange={e => setSelectedFrequency(e.target.value)}
                 disabled={isActive}
-                className="w-full max-w-xs p-2 border border-border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-50"
+                className="w-full max-w-xs p-2 border border-border dark:border-[#2D3B55] rounded-lg text-sm bg-white dark:bg-[#111827] text-foreground dark:text-white outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-50"
               >
                 <option value="5">Every 5 seconds</option>
                 <option value="10">Every 10 seconds</option>
@@ -560,7 +560,7 @@ export function ActivityTracker() {
                   onChange={e => setCustomIntervalInput(e.target.value)}
                   disabled={isActive}
                   placeholder="Enter time in seconds"
-                  className="w-full max-w-xs p-2 border border-border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-50"
+                  className="w-full max-w-xs p-2 border border-border dark:border-[#2D3B55] rounded-lg text-sm bg-white dark:bg-[#111827] text-foreground dark:text-white outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-50"
                 />
                 {(() => {
                   const val = parseInt(customIntervalInput, 10);
@@ -573,7 +573,7 @@ export function ActivityTracker() {
             )}
             <div className="flex items-center gap-3">
               <input type="checkbox" id="capScreenshots" checked={captureScreenshots} onChange={e => setCaptureScreenshots(e.target.checked)} disabled={isActive} className="w-4 h-4 accent-blue-600" />
-              <label htmlFor="capScreenshots" className="text-sm font-medium cursor-pointer">
+              <label htmlFor="capScreenshots" className="text-sm font-medium cursor-pointer dark:text-[#CBD5E1]">
                 Silent Monitoring (OS-level capture, no permission dialogs)
               </label>
             </div>
@@ -581,18 +581,18 @@ export function ActivityTracker() {
         )}
 
         {/* Control Bar */}
-        <div className="bg-white border border-border rounded-xl p-5 shadow-sm">
+        <div className="bg-white dark:bg-[#1A2332] border border-border dark:border-[#2D3B55] rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-3">
               {isActive ? (
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-3 py-2 rounded-lg flex-wrap">
+                <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 px-3 py-2 rounded-lg flex-wrap">
                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse inline-block flex-shrink-0" />
                   <Eye className="w-4 h-4 text-green-600 flex-shrink-0" />
                   <span className="text-sm font-semibold text-green-700">Screen monitoring is active</span>
                   {selectedIncident && (
                     <>
                       <span className="text-green-400 text-sm">·</span>
-                      <span className="text-xs font-bold text-slate-600">Incident:</span>
+                      <span className="text-xs font-bold text-slate-600 dark:text-[#CBD5E1]">Incident:</span>
                       <span className="font-mono text-xs font-bold text-white bg-blue-600 px-2 py-0.5 rounded-full">
                         {selectedIncident}
                       </span>
@@ -600,16 +600,16 @@ export function ActivityTracker() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg">
-                  <EyeOff className="w-4 h-4 text-slate-400" />
-                  <span className="text-sm text-slate-500">Monitoring inactive</span>
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#2D3B55] px-3 py-2 rounded-lg">
+                  <EyeOff className="w-4 h-4 text-slate-400 dark:text-[#94A3B8]" />
+                  <span className="text-sm text-slate-500 dark:text-[#CBD5E1]">Monitoring inactive</span>
                 </div>
               )}
               {isActive && <div className="font-mono text-xl font-bold text-green-600 tabular-nums">{fmtHMS(elapsed)}</div>}
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               {entries.length > 0 && (
-                <div className="text-xs text-muted-foreground hidden sm:block">
+                <div className="text-xs text-muted-foreground dark:text-[#94A3B8] hidden sm:block">
                   {entries.filter(e => !e.isProcessing).length} snapshots{topActivity ? ` · ${topActivity[0]}` : ''}
                 </div>
               )}
@@ -627,8 +627,8 @@ export function ActivityTracker() {
                           type="button"
                           onClick={() => { setIsOpen(!isOpen); }}
                           disabled={ticketsLoading}
-                          className={`w-full flex items-center justify-between h-[42px] border rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all cursor-pointer text-left px-3
-                            ${selectedIncident ? 'border-blue-500 font-semibold text-blue-600 shadow-sm' : 'border-border text-slate-500'}
+                          className={`w-full flex items-center justify-between h-[42px] border rounded-xl text-sm bg-white dark:bg-[#111827] outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all cursor-pointer text-left px-3
+                            ${selectedIncident ? 'border-blue-500 font-semibold text-blue-600 dark:text-blue-400 shadow-sm' : 'border-border dark:border-[#2D3B55] text-slate-500 dark:text-[#CBD5E1]'}
                             ${ticketsLoading ? 'opacity-60 cursor-wait' : ''}
                           `}
                         >
@@ -654,14 +654,14 @@ export function ActivityTracker() {
 
                         {/* Dropdown Menu */}
                         {isOpen && (
-                          <div className="absolute z-[9999] left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto py-1">
+                          <div className="absolute z-[9999] left-0 right-0 mt-1 bg-white dark:bg-[#1A2332] border border-slate-200 dark:border-[#2D3B55] rounded-xl shadow-xl max-h-60 overflow-y-auto py-1">
                             <button
                               type="button"
                               onClick={() => {
                                 setSelectedIncident(null);
                                 setIsOpen(false);
                               }}
-                              className="w-full text-left px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors font-medium flex items-center"
+                              className="w-full text-left px-3 py-2 text-sm text-slate-500 dark:text-[#94A3B8] hover:bg-slate-50 dark:hover:bg-[#111827] transition-colors font-medium flex items-center"
                             >
                               — Select Incident —
                             </button>
@@ -680,8 +680,8 @@ export function ActivityTracker() {
                                     setSelectedIncident(ticket.number);
                                     setIsOpen(false);
                                   }}
-                                  className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 hover:bg-blue-50/50
-                                    ${selectedIncident === ticket.number ? 'bg-blue-50 text-blue-600 font-bold' : 'text-blue-600 font-semibold'}
+                                  className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 hover:bg-blue-50/50 dark:hover:bg-blue-950/40
+                                    ${selectedIncident === ticket.number ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold' : 'text-blue-600 dark:text-blue-400 font-semibold'}
                                   `}
                                   style={{ color: '#2563eb' }}
                                 >
@@ -725,12 +725,12 @@ export function ActivityTracker() {
             </div>
           </div>
           {!isActive && entries.length === 0 && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-[#111827] border border-blue-200 dark:border-[#2D3B55] dark:border-l-4 dark:border-l-blue-500 rounded-lg flex items-start gap-2">
               <Bot className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-blue-700">
+              <p className="text-xs text-blue-700 dark:text-[#CBD5E1]">
                 <strong>Silent OS-level Monitoring.</strong>{' '}
                 {!selectedIncident && myIncidents.length > 0 ? (
-                  <span className="text-red-600 font-semibold">Select an incident from the dropdown, then click </span>
+                  <span className="text-red-600 dark:text-red-400 font-semibold">Select an incident from the dropdown, then click </span>
                 ) : (
                   <>Click </>
                 )}
@@ -762,24 +762,24 @@ export function ActivityTracker() {
               { label: 'Keystrokes', value: totalKeys, icon: <Keyboard className="w-4 h-4 text-purple-500" /> },
               { label: 'Clicks', value: totalClicks, icon: <MousePointer className="w-4 h-4 text-green-500" /> },
             ].map(s => (
-              <div key={s.label} className="bg-white border border-border rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-1">{s.icon}<span className="text-xs text-muted-foreground uppercase tracking-wide font-bold">{s.label}</span></div>
-                <div className="text-2xl font-bold text-foreground tabular-nums">{s.value}</div>
+              <div key={s.label} className="bg-white dark:bg-[#111827] border border-border dark:border-[#2D3B55] rounded-xl p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-1">{s.icon}<span className="text-xs text-muted-foreground dark:text-[#94A3B8] uppercase tracking-wide font-bold">{s.label}</span></div>
+                <div className="text-2xl font-bold text-foreground dark:text-white tabular-nums">{s.value}</div>
               </div>
             ))}
           </div>
         )}
 
         {/* Live Feed */}
-        <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-slate-50">
-            <div className="flex items-center gap-2">
+        <div className="bg-white dark:bg-[#1A2332] border border-border dark:border-[#2D3B55] rounded-xl shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border dark:border-[#2D3B55] bg-slate-50 dark:bg-[#111827]">
+            <div className="flex items-center gap-2 text-foreground dark:text-white">
               <Zap className="w-4 h-4 text-blue-500" />
               <span className="text-sm font-bold">Live Activity Feed</span>
               {entries.length > 0 && <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">{entries.length}</span>}
             </div>
             {entries.length > 0 && (
-              <button onClick={() => { setEntries([]); setSummary(null); }} className="text-xs text-muted-foreground hover:text-red-500 transition-colors flex items-center gap-1">
+              <button onClick={() => { setEntries([]); setSummary(null); }} className="text-xs text-muted-foreground dark:text-[#CBD5E1] hover:text-red-500 dark:hover:text-red-400 transition-colors flex items-center gap-1">
                 <RefreshCw className="w-3 h-3" /> Clear
               </button>
             )}
@@ -787,11 +787,11 @@ export function ActivityTracker() {
           <div className="p-4 space-y-4 max-h-[640px] overflow-y-auto">
             {entries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 border border-blue-100">
+                <div className="w-16 h-16 bg-blue-50 dark:bg-[#111827] rounded-full flex items-center justify-center mb-4 border border-blue-100 dark:border-[#2D3B55]">
                   <Monitor className="w-7 h-7 text-blue-400" />
                 </div>
-                <p className="text-sm font-semibold text-muted-foreground">No activity recorded yet</p>
-                <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                <p className="text-sm font-semibold text-muted-foreground dark:text-[#CBD5E1]">No activity recorded yet</p>
+                <p className="text-xs text-muted-foreground dark:text-[#94A3B8] mt-1 max-w-sm">
                   Click <strong>Start Monitoring</strong>. The AI detects your app, captures a screenshot,
                   and describes what you're working on every {intervalSec} seconds.
                 </p>
@@ -803,7 +803,7 @@ export function ActivityTracker() {
 
         {/* Breakdown */}
         {Object.keys(breakdown).length > 0 && (
-          <div className="bg-white border border-border rounded-xl p-5 shadow-sm">
+          <div className="bg-white dark:bg-[#1A2332] border border-border dark:border-[#2D3B55] rounded-xl p-5 shadow-sm text-foreground dark:text-white">
             <h3 className="text-sm font-bold mb-4 flex items-center gap-2"><BarChart2 className="w-4 h-4 text-blue-500" /> Activity Breakdown</h3>
             <div className="space-y-2">
               {Object.entries(breakdown).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([label, count]) => {
@@ -811,11 +811,11 @@ export function ActivityTracker() {
                 const pct = total > 0 ? Math.round(((count as number) / total) * 100) : 0;
                 return (
                   <div key={label} className="flex items-center gap-3">
-                    <span className="text-sm w-40 truncate font-medium">{label}</span>
-                    <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                    <span className="text-sm w-40 truncate font-medium dark:text-[#CBD5E1]">{label}</span>
+                    <div className="flex-1 bg-slate-100 dark:bg-[#111827] rounded-full h-2 overflow-hidden">
                       <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
                     </div>
-                    <span className="text-xs text-muted-foreground w-16 text-right font-mono">{pct}% ({count})</span>
+                    <span className="text-xs text-muted-foreground dark:text-[#94A3B8] w-16 text-right font-mono">{pct}% ({count})</span>
                   </div>
                 );
               })}
@@ -825,16 +825,16 @@ export function ActivityTracker() {
 
         {/* Activity Details Popup Modal */}
         {showSessionPopup && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl border border-border shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm animate-in fade-in duration-200 activity-tracker-modal">
+            <div className="bg-white dark:bg-[#1A2332] rounded-2xl border border-border dark:border-[#2D3B55] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
               {/* Header */}
-              <div className="px-6 py-4 bg-slate-50 border-b border-border flex items-center justify-between">
+              <div className="px-6 py-4 bg-slate-50 dark:bg-[#111827] border-b border-border dark:border-[#2D3B55] flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Bot className="w-5 h-5 text-blue-600" />
-                  <h2 className="text-base font-bold text-slate-800">
+                  <h2 className="text-base font-bold text-slate-800 dark:text-white">
                     Save AI Activity Details
                     {selectedIncident && (
-                      <span className="ml-2 text-sm text-blue-600 font-mono bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      <span className="ml-2 text-sm text-blue-600 font-mono bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900/50">
                         {selectedIncident}
                       </span>
                     )}
@@ -843,7 +843,7 @@ export function ActivityTracker() {
                 <button
                   type="button"
                   onClick={() => setShowSessionPopup(false)}
-                  className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1 rounded hover:bg-slate-100 transition-colors"
+                  className="text-slate-400 dark:text-[#94A3B8] hover:text-slate-600 dark:hover:text-white text-xl font-bold p-1 rounded hover:bg-slate-100 dark:hover:bg-[#111827] transition-colors"
                 >
                   ×
                 </button>
@@ -853,21 +853,21 @@ export function ActivityTracker() {
               <div className="p-6 space-y-4 overflow-y-auto flex-1 text-left">
                 {/* Date */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                     Activity Date
                   </label>
                   <input
                     type="date"
                     value={sessionForm.entryDate}
                     onChange={e => setSessionForm(f => ({ ...f, entryDate: e.target.value }))}
-                    className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                   />
                 </div>
 
                 {/* Start Time & End Time & Duration */}
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                       Start Time
                     </label>
                     <input
@@ -878,11 +878,11 @@ export function ActivityTracker() {
                         setSessionForm(f => ({ ...f, startTime: val }));
                         updateDuration(val, sessionForm.endTime);
                       }}
-                      className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                       End Time
                     </label>
                     <input
@@ -893,31 +893,31 @@ export function ActivityTracker() {
                         setSessionForm(f => ({ ...f, endTime: val }));
                         updateDuration(sessionForm.startTime, val);
                       }}
-                      className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                       Duration (Mins)
                     </label>
                     <input
                       type="number"
                       value={sessionForm.minutesWorked}
                       onChange={e => setSessionForm(f => ({ ...f, minutesWorked: parseInt(e.target.value) || 0 }))}
-                      className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                     />
                   </div>
                 </div>
 
                 {/* Task / Work Type Dropdown */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                     Task / Work Type
                   </label>
                   <select
                     value={sessionForm.task}
                     onChange={e => setSessionForm(f => ({ ...f, task: e.target.value }))}
-                    className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                   >
                     <option value="Ticket Resolution">Ticket Resolution</option>
                     <option value="Documentation">Documentation</option>
@@ -931,7 +931,7 @@ export function ActivityTracker() {
                 {/* Custom Task type input if Other chosen */}
                 {sessionForm.task === "Other..." && (
                   <div className="animate-in slide-in-from-top-2 duration-150">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                       Custom Work Type
                     </label>
                     <input
@@ -939,20 +939,20 @@ export function ActivityTracker() {
                       placeholder="Specify your custom task/work type..."
                       value={sessionForm.customTask}
                       onChange={e => setSessionForm(f => ({ ...f, customTask: e.target.value }))}
-                      className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                     />
                   </div>
                 )}
 
                 {/* Activity Category Dropdown */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                     Activity Category
                   </label>
                   <select
                     value={sessionForm.workType}
                     onChange={e => setSessionForm(f => ({ ...f, workType: e.target.value }))}
-                    className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                   >
                     <option value="Development">Development</option>
                     <option value="Testing">Testing</option>
@@ -965,7 +965,7 @@ export function ActivityTracker() {
 
                 {/* Short Description */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                     <span className="text-red-500 font-bold">*</span> Short Description
                   </label>
                   <input
@@ -974,13 +974,13 @@ export function ActivityTracker() {
                     placeholder="Briefly explain what was done during this session..."
                     value={sessionForm.shortDescription}
                     onChange={e => setSessionForm(f => ({ ...f, shortDescription: e.target.value }))}
-                    className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white"
                   />
                 </div>
 
                 {/* Detailed Description */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                     Detailed Description / Work Summary
                   </label>
                   <textarea
@@ -988,13 +988,13 @@ export function ActivityTracker() {
                     placeholder="Explain all tasks completed during this session..."
                     value={sessionForm.description}
                     onChange={e => setSessionForm(f => ({ ...f, description: e.target.value }))}
-                    className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none"
+                    className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white resize-none"
                   />
                 </div>
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-1">
                     Optional Notes
                   </label>
                   <textarea
@@ -1002,17 +1002,17 @@ export function ActivityTracker() {
                     placeholder="Enter any additional notes..."
                     value={sessionForm.notes}
                     onChange={e => setSessionForm(f => ({ ...f, notes: e.target.value }))}
-                    className="w-full p-2 border border-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none"
+                    className="w-full p-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#111827] dark:text-white resize-none"
                   />
                 </div>
 
                 {/* Billable Status */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-[#CBD5E1] uppercase tracking-wider mb-2">
                     Billable Status
                   </label>
                   <div className="flex gap-4">
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-[#CBD5E1] cursor-pointer">
                       <input
                         type="radio"
                         name="billable"
@@ -1023,7 +1023,7 @@ export function ActivityTracker() {
                       />
                       Billable
                     </label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-[#CBD5E1] cursor-pointer">
                       <input
                         type="radio"
                         name="billable"
@@ -1039,11 +1039,11 @@ export function ActivityTracker() {
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-4 bg-slate-50 border-t border-border flex items-center justify-end gap-2">
+              <div className="px-6 py-4 bg-slate-50 dark:bg-[#111827] border-t border-border dark:border-[#2D3B55] flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowSessionPopup(false)}
-                  className="px-4 py-2 border border-border rounded-lg text-xs hover:bg-slate-100 transition-colors font-semibold"
+                  className="px-4 py-2 border border-border dark:border-[#2D3B55] rounded-lg text-xs bg-white dark:bg-[#1A2332] text-foreground dark:text-[#CBD5E1] hover:bg-slate-100 dark:hover:bg-[#111827] transition-colors font-semibold"
                 >
                   Cancel
                 </button>
