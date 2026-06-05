@@ -675,14 +675,24 @@ export function Tickets() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto font-outfit">
+    <div className="standard-page-layout font-outfit">
       {/* Workspace Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-5">
+      <div className="standard-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40">
         <div>
-          <h1 className="text-3xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
-            Security Control Workspace
+          <h1 className="page-title">
+            {filter === "assigned_to_me" ? "My Assigned Tickets" :
+             filter === "open" ? "Open Incidents" :
+             filter === "unassigned" ? "Open - Unassigned" :
+             filter === "resolved" ? "Resolved Incidents" :
+             filter === "created_by_me" ? "My Created Tickets" :
+             filter === "in_progress" ? "In Progress Incidents" :
+             filter === "closed" ? "Closed Incidents" :
+             filter === "pending" ? "Pending Incidents" :
+             filter === "overdue" ? "Overdue Incidents" :
+             filter === "critical_open" ? "Critical Open Incidents" :
+             "All Incidents"}
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">Real-time incident streams & service request orchestration.</p>
+          <p className="page-description">Real-time incident streams & service request orchestration.</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Layout viewMode toggle buttons */}

@@ -254,14 +254,14 @@ export function MyDashboard() {
   }
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto font-outfit">
+    <div className="standard-page-layout font-outfit">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-5">
+      <div className="standard-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40">
         <div>
-          <h1 className="text-3xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
-            Personal Command Console
+          <h1 className="page-title">
+            Personal Dashboard
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">Real-time individual performance telemetries & active task controls.</p>
+          <p className="page-description">Real-time performance metrics and active tasks</p>
         </div>
         <span className="text-[10px] text-muted-foreground bg-muted/30 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-border/40 font-bold self-start sm:self-auto">
           Operator: <strong className="text-foreground">{user?.email || "User"}</strong>
@@ -328,7 +328,7 @@ export function MyDashboard() {
 
       {/* SLA Breaches Section */}
       <div className="glass-panel rounded-2xl border border-border/80 p-6 shadow-2xl">
-        <h2 className="text-[10px] font-black uppercase tracking-widest text-rose-400 mb-4 font-outfit">Active SLA Breaches</h2>
+        <h2 className="section-title mb-4">Active SLA Breaches</h2>
         {validBreaches.length === 0 ? (
           <p className="text-xs text-muted-foreground font-outfit">No active SLA breaches recorded for your assigned incidents.</p>
         ) : (

@@ -53,9 +53,9 @@ export default function PerformanceMetric({ label, value }: PerformanceMetricPro
         glowShadow
       )}
     >
-      <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-3.5 font-outfit">{label}</div>
+      <div className="card-title mb-3.5">{label}</div>
       <div className="flex items-baseline justify-between">
-        <span className={cn("text-3xl font-bold tracking-tight font-orbitron", textColor)}>{value}</span>
+        <span className={cn("metric-value", textColor)}>{value}</span>
         <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-widest font-outfit", badgeColor)}>
           Telemetry
         </span>

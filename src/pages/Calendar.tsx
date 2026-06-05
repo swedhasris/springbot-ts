@@ -511,14 +511,14 @@ export function Calendar() {
   }
 
   return (
-    <div className="space-y-0 max-w-full">
+    <div className="standard-page-layout">
       {/* ═══ PAGE HEADER ═══ */}
-      <div className="bg-card border-b border-border px-4 py-2">
-        <div className="flex items-center justify-between">
+      <div className="standard-page-header border-b border-border px-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-sm font-bold text-sn-dark">Calendar</h1>
-            <p className="text-xs text-muted-foreground">
-              My {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}ly Calendar View For {selectedUserProfile?.name || profile?.name || "User"},{" "}
+            <h1 className="page-title">Calendar</h1>
+            <p className="page-description">
+              Manage schedules, timesheets and activities. View for {selectedUserProfile?.name || profile?.name || "User"},{" "}
               {weekStart === "—" ? "—" : (
                 weekStart === weekEnd ? (
                   new Date(weekStart).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })

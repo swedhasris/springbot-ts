@@ -656,12 +656,12 @@ export function Companies() {
           </div>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="standard-page-layout space-y-6">
           {/* Page Header */}
-          <div className="flex items-center justify-between">
+          <div className="standard-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Companies</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">Manage customer, partner, and vendor organizations</p>
+              <h1 className="page-title">Companies</h1>
+              <p className="page-description">Manage customer, partner, and vendor organizations</p>
             </div>
             <Button onClick={() => navigate("/companies/new")} className="bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-sm">
               <Plus className="w-4 h-4 mr-2" />

@@ -217,7 +217,7 @@ function SummaryCard({ summary, duration, entryCount, onDismiss }: { summary: st
   return (
     <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl p-6 shadow-xl">
       <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-2"><BarChart2 className="w-5 h-5" /><span className="font-bold text-lg">Session Summary</span></div>
+        <div className="flex items-center gap-2"><BarChart2 className="w-5 h-5" /><span className="section-title !mt-0">Session Summary</span></div>
         <button onClick={onDismiss} className="text-white/60 hover:text-white text-xl font-bold">×</button>
       </div>
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -513,15 +513,14 @@ export function ActivityTracker() {
     <>
       {previewModal && <ScreenshotModal src={previewModal} onClose={() => setPreviewModal(null)} />}
 
-      <div className="max-w-5xl mx-auto space-y-5 activity-tracker-container dark:bg-[#0B1220] dark:p-6 dark:rounded-2xl dark:border dark:border-[#2D3B55]">
-
+      <div className="standard-page-layout activity-tracker-container dark:bg-[#0B1220]">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="standard-page-header flex items-center justify-between border-b border-border/40">
           <div>
-            <h1 className="text-2xl font-bold text-foreground dark:text-white flex items-center gap-2">
-              <Monitor className="w-6 h-6 text-blue-600" /> AI Activity Tracker
+            <h1 className="page-title flex items-center gap-2">
+              <Monitor className="w-8 h-8 text-blue-600" /> AI Activity Tracker
             </h1>
-            <p className="text-sm text-muted-foreground dark:text-[#94A3B8] mt-0.5">
+            <p className="page-description">
               Detects apps, captures screenshots, generates AI descriptions, updates timesheet automatically.
             </p>
           </div>

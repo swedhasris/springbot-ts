@@ -41,10 +41,10 @@ export default function AnalyticsCard({ title, value }: AnalyticsCardProps) {
     <div className="relative overflow-hidden rounded-xl border bg-card p-6 transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:hover:shadow-[0_8px_30px_rgba(255,255,255,0.04)] group">
       <div className={cn("absolute top-0 left-0 w-full h-1", accentColor)} />
       <div className="relative z-10 flex flex-col justify-between h-full">
-        <div className="text-[11px] font-bold tracking-wider uppercase text-muted-foreground mb-2">
+        <div className="card-title mb-2">
           {title}
         </div>
-        <div className={cn("text-4xl font-black tabular-nums tracking-tight font-orbitron mt-2", textColor)}>
+        <div className={cn("metric-value mt-2", textColor)}>
           {value}
         </div>
       </div>

@@ -65,19 +65,18 @@ export function KnowledgeBase() {
   );
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Hero */}
-      <div className="text-center space-y-4 py-12 bg-sn-sidebar text-white rounded-2xl shadow-xl relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-sn-green/10 to-transparent pointer-events-none" />
-        <h1 className="text-4xl font-light relative z-10">Knowledge Base</h1>
-        <p className="text-white/60 relative z-10">Find answers, troubleshooting guides, and documentation.</p>
-        <div className="max-w-2xl mx-auto px-4 relative z-10">
-          <div className="relative group">
-            <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-sn-green transition-colors" />
-            <input type="text" placeholder="Search for articles, topics, or keywords..."
-              value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full bg-white text-sn-dark border-none rounded-xl py-4 pl-12 pr-4 text-lg outline-none shadow-2xl focus:ring-2 focus:ring-sn-green transition-all" />
-          </div>
+    <div className="standard-page-layout">
+      {/* Page Header */}
+      <div className="standard-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40">
+        <div>
+          <h1 className="page-title">Knowledge Base</h1>
+          <p className="page-description">Find articles, documentation and troubleshooting guides</p>
+        </div>
+        <div className="w-full sm:w-96 relative group">
+          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
+          <input type="text" placeholder="Search for articles, topics, or keywords..."
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full bg-background border border-border rounded-xl py-2 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
         </div>
       </div>
 
@@ -85,7 +84,7 @@ export function KnowledgeBase() {
         {/* Sidebar */}
         <div className="space-y-4">
           <div className="sn-card p-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">Categories</h3>
+            <h3 className="card-title mb-4">Categories</h3>
             <div className="space-y-1">
               <button onClick={() => setCategory("")}
                 className={cn("w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm hover:bg-muted/50 transition-colors",

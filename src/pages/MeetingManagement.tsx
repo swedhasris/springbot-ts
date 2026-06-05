@@ -1156,7 +1156,7 @@ export function MeetingManagement() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-orbitron font-bold tracking-tight text-blue-600 dark:text-blue-400">
-            AETHEROPS MEETING CONTROL
+            Meeting Management
           </h1>
           <p className="text-text-dim text-sm mt-1">
             Centrally coordinate operations, document details, audit histories, and export Minutes of Meetings (MOM).
