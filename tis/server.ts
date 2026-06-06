@@ -16,6 +16,14 @@ import { computeActiveSlaUsage, createDefaultSlaDelayMeta, isTicketClosed, parse
 import { uIOhook } from "uiohook-napi";
 import { setUseSQLite } from "./src/lib/db";
 import { NotificationEngine } from "./src/lib/notificationEngine";
+import {
+  notifyTicketCreatedM365,
+  dispatchTicketUpdateNotifications,
+  notifyCommentAddedM365,
+  notifySlaWarningM365,
+  notifySlaBreachedM365,
+  notifyTicketEscalatedM365,
+} from "./src/lib/ticketNotificationService";
 import nodemailer from 'nodemailer';
 import imaps from 'imap-simple';
 import { db as firestoreDb } from "./src/lib/firebase";
@@ -959,6 +967,8 @@ async function monitorSlaDelayAccountability() {
             "INSERT INTO ticket_activities (ticket_id, activity_type, visibility_type, created_by, created_by_name, message, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [ticket.id, "sla_breached", "internal", "system", "SLA Engine", "SLA breached. RCA and corrective action are mandatory.", JSON.stringify({ breachDurationMs })]
           );
+          // ── M365: deep SLA breach (Firestore path) ───────────────────────
+          notifySlaBreachedM365(ticket, effective.slaType === 'resolution' ? 'Resolution' : 'Response', formatBreachDuration(breachDurationMs)).catch(() => {});
 
           // Call recordBreach here!
           const breachTimeslot = getBreachTimeslot(breachDurationMs);
@@ -1097,6 +1107,8 @@ async function monitorSlaDelayAccountability() {
         // Dispatch notifications when breach occurs
         const recipients = await getEscalationRecipients(ticket);
         await dispatchNotificationsToRecipients(ticket, recipients, "system", "SLA Engine", `SLA breach alert for ticket #${ticket.ticket_number}. RCA, corrective action, and final resolution explanation are required.`);
+        // ── M365: deep SLA breach (SQL path) ─────────────────────────────
+        notifySlaBreachedM365(ticket, effective.slaType === 'resolution' ? 'Resolution' : 'Response', formatBreachDuration(breachDurationMs)).catch(() => {});
       }
 
       if (nextMeta.breachAt && nextMeta.rcaRequired && !nextMeta.rootCauseAnalysis && !nextMeta.rcaEscalated) {
@@ -1177,11 +1189,16 @@ async function escalateStaleTickets() {
                 timestamp: now.toISOString(),
                 user: "SLA Engine"
               });
+              // ── M365: SLA Response Breach notification ────────────────────
+              notifySlaBreachedM365(ticket, 'Response').catch(() => {});
             } else {
               const totalWindow = deadline - createdAt;
               if (totalWindow > 0 && diff < totalWindow * 0.2) {
                 if (ticket.response_sla_status !== 'At Risk') {
                   updates.response_sla_status = 'At Risk';
+                  // ── M365: SLA Response At-Risk warning ─────────────────────
+                  const pct = Math.round(((totalWindow - diff) / totalWindow) * 100);
+                  notifySlaWarningM365(ticket, pct, 'Response').catch(() => {});
                 }
               }
             }
@@ -1208,11 +1225,16 @@ async function escalateStaleTickets() {
                 timestamp: now.toISOString(),
                 user: "SLA Engine"
               });
+              // ── M365: SLA Resolution Breach notification ──────────────────
+              notifySlaBreachedM365(ticket, 'Resolution').catch(() => {});
             } else {
               const totalWindow = deadline - createdAt;
               if (totalWindow > 0 && diff < totalWindow * 0.2) {
                 if (ticket.resolution_sla_status !== 'At Risk') {
                   updates.resolution_sla_status = 'At Risk';
+                  // ── M365: SLA Resolution At-Risk warning ───────────────────
+                  const pct = Math.round(((totalWindow - diff) / totalWindow) * 100);
+                  notifySlaWarningM365(ticket, pct, 'Resolution').catch(() => {});
                 }
               }
             }
@@ -2368,6 +2390,11 @@ async function startServer() {
         console.error("[Notification] Failed to send create notifications:", notifErr.message);
       }
 
+      // ── M365 Enhanced Notifications: Ticket Created ────────────────────────
+      notifyTicketCreatedM365(createdTicket).catch((e: any) =>
+        console.error('[TNS] ticketCreated background error:', e.message)
+      );
+
       res.json({
         id: ticketId.toString(),
         ...createdTicket,
@@ -2675,6 +2702,11 @@ async function startServer() {
       } catch (notifErr: any) {
         console.error("[Notification] Error in update route:", notifErr.message);
       }
+
+      // ── M365 Enhanced Notifications: Status / Assignment Changed ──────────
+      dispatchTicketUpdateNotifications(updatedTicket, ticket, req.body).catch((e: any) =>
+        console.error('[TNS] dispatchTicketUpdate background error:', e.message)
+      );
 
       res.json({
         id: id.toString(),
@@ -3168,6 +3200,31 @@ async function startServer() {
         } catch (emailErr) {
           console.error("[Email Notification] Failed to send update email:", emailErr);
         }
+      }
+
+      // ── M365 Enhanced Notifications: Comment / Work Note Added ────────────
+      // Runs after the existing notification logic — non-blocking background task
+      if (actType === 'comment' || actType === 'work_note' || actType === 'email_reply') {
+        (async () => {
+          try {
+            // Fetch full ticket context for the notification
+            const ticketRows = await query(
+              "SELECT * FROM tickets WHERE id = ?", [id]
+            );
+            if (ticketRows.length > 0) {
+              const fullTicket = ticketRows[0];
+              const isInternal = visType === 'internal';
+              await notifyCommentAddedM365(
+                fullTicket,
+                created_by_name || created_by || 'Support Team',
+                message,
+                isInternal
+              );
+            }
+          } catch (e: any) {
+            console.error('[TNS] commentAdded background error:', e.message);
+          }
+        })();
       }
 
       res.json({ id: result.insertId.toString(), ...activities[0] });
