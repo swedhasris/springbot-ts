@@ -175,10 +175,9 @@ export function TicketDetail() {
       });
       return;
     }
-
     const unsubscribe = onSnapshot(doc(db, "tickets", id), (docSnapshot) => {
       if (docSnapshot.exists()) {
-        const data = { id: docSnapshot.id, ...docSnapshot.data() };
+        const data = { id: docSnapshot.id, ...docSnapshot.data() } as any;
         setTicket(data);
         setEditedTicket((prev: any) => {
           const mergedFields = customFieldsRef.current || {};
