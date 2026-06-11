@@ -5,8 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { query, execute, formatDate } from './db';
 import { NotificationEngine } from "./notificationEngine";
-import { collection, addDoc, serverTimestamp, getDocs, query as fsQuery, where, limit, updateDoc, doc, getDoc } from "firebase/firestore";
-import { db as firestoreDb } from "./firebase";
+// Firebase removed — all data access uses MySQL via query()/execute()
 
 /**
  * OmniChannelEngine handles multi-channel communication (Email, WhatsApp, etc.)
@@ -126,15 +125,11 @@ export class OmniChannelEngine {
               const existing = await query("SELECT id FROM email_logs WHERE message_id = ?", [parsed.messageId]);
               if (existing.length > 0) continue;
 
-              // Find company ID for log
+              // Find company ID for log via MySQL
               let companyId: string | null = null;
               try {
-                const companiesRef = collection(firestoreDb, "companies");
-                const q = fsQuery(companiesRef, where("email_integration_id", "==", String(config.id)));
-                const snap = await getDocs(q);
-                if (!snap.empty) {
-                  companyId = snap.docs[0].id;
-                }
+                const companies = await query("SELECT id FROM companies WHERE email_integration_id = ? LIMIT 1", [String(config.id)]);
+                if (companies.length > 0) companyId = String(companies[0].id);
               } catch (err) {
                 console.error("[OmniChannel] Error finding company for integration ID:", config.id, err);
               }
@@ -209,17 +204,13 @@ export class OmniChannelEngine {
           const ticketSqlId = dbTicket.id;
           const assignedTo = dbTicket.assigned_to;
           
-          // Verify mailbox belongs to company mapped to ticket
+          // Verify mailbox belongs to company mapped to ticket via MySQL
           let isMailboxValid = false;
           if (dbTicket.company_id) {
             try {
-              const companyRef = doc(firestoreDb, "companies", String(dbTicket.company_id));
-              const companySnap = await getDoc(companyRef);
-              if (companySnap.exists()) {
-                const compData = companySnap.data();
-                if (compData.email_integration_id?.toString() === config.id?.toString()) {
-                  isMailboxValid = true;
-                }
+              const compRows = await query("SELECT email_integration_id FROM companies WHERE id = ? LIMIT 1", [dbTicket.company_id]);
+              if (compRows.length > 0 && String(compRows[0].email_integration_id) === String(config.id)) {
+                isMailboxValid = true;
               }
             } catch (err) {
               console.error("[OmniChannel] Verification of company email integration failed:", err);
@@ -251,22 +242,9 @@ export class OmniChannelEngine {
           
           await execute("UPDATE tickets SET updated_at = ? WHERE id = ?", [formatDate(new Date()), ticketSqlId]);
 
-          // Sync to Firestore
+          // Update ticket updated_at timestamp in MySQL
           try {
-            const fsTickets = await getDocs(fsQuery(collection(firestoreDb, "tickets"), where("number", "==", ticketNumber), limit(1)));
-            if (!fsTickets.empty) {
-              const fsDoc = fsTickets.docs[0];
-              const currentHistory = fsDoc.data().history || [];
-              await updateDoc(doc(firestoreDb, "tickets", fsDoc.id), {
-                updatedAt: serverTimestamp(),
-                history: [...currentHistory, {
-                  action: `Email Reply Received (via ${config.company_name})`,
-                  timestamp: new Date().toISOString(),
-                  user: from,
-                  details: subject
-                }]
-              });
-            }
+            await execute("UPDATE tickets SET updated_at = ? WHERE ticket_number = ?", [formatDate(new Date()), ticketNumber]);
           } catch {}
 
           if (assignedTo) {
@@ -285,17 +263,15 @@ export class OmniChannelEngine {
       // 2. New Ticket Creation
       const ticketNumber = 'INC' + Math.floor(1000000 + Math.random() * 9000000);
       
-      // Find company ID mapped to this config
+      // Find company ID mapped to this config via MySQL
       let companyId: string | null = null;
       let companyName = config.company_name;
 
       try {
-        const companiesRef = collection(firestoreDb, "companies");
-        const q = fsQuery(companiesRef, where("email_integration_id", "==", String(config.id)));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          companyId = snap.docs[0].id;
-          companyName = snap.docs[0].data().name;
+        const companies = await query("SELECT id, name FROM companies WHERE email_integration_id = ? LIMIT 1", [String(config.id)]);
+        if (companies.length > 0) {
+          companyId = String(companies[0].id);
+          companyName = companies[0].name;
         }
       } catch (err) {
         console.error("[OmniChannel] Error finding company for integration ID:", config.id, err);
@@ -322,25 +298,7 @@ export class OmniChannelEngine {
         [ticketSqlId, from, config.email_address, subject, body.substring(0, 5000)]
       );
 
-      // Firestore Insertion
-      try {
-        await addDoc(collection(firestoreDb, "tickets"), {
-          number: ticketNumber,
-          caller: from,
-          title: subject,
-          description: body.substring(0, 5000),
-          status: "New",
-          priority: "4 - Low",
-          channel: "Email",
-          createdBy: "System",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          company: companyId,
-          company_id: companyId,
-          companyName: companyName,
-          history: [{ action: "Ticket created via email", timestamp: new Date().toISOString(), user: from }]
-        });
-      } catch {}
+      // Ticket is already in MySQL from the INSERT above — no additional sync needed
 
       // Queue Acknowledgement email instead of sending directly
       try {

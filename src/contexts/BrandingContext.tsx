@@ -1,6 +1,9 @@
+/**
+ * src/contexts/BrandingContext.tsx
+ *
+ * Pure REST API branding context — Firebase removed.
+ */
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { firebaseAvailable, db } from "../lib/firebase";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
 
 interface BrandingSettings {
   companyName: string;
@@ -25,129 +28,40 @@ const BrandingContext = createContext<BrandingContextType | undefined>(undefined
 
 export function BrandingProvider({ children }: { children: React.ReactNode }) {
   const [branding, setBranding] = useState<BrandingSettings>(defaultBranding);
-  const [loading, setLoading] = useState(firebaseAvailable); // only loading if Firebase is available
+  const [loading, setLoading] = useState(true);
+
+  const fetchBranding = async () => {
+    try {
+      const res = await fetch("/api/settings/branding");
+      if (res.ok) {
+        const data = await res.json();
+        setBranding({
+          companyName: data.companyName || defaultBranding.companyName,
+          logoBase64: data.logoBase64 || null,
+          logoType: data.logoType || null,
+        });
+      }
+    } catch (e) {
+      console.warn("[BrandingContext] Fetch failed:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchFallbackBranding = async () => {
-      try {
-        const res = await fetch("/api/settings/branding");
-        if (res.ok) {
-          const data = await res.json();
-          setBranding({
-            companyName: data.companyName || defaultBranding.companyName,
-            logoBase64: data.logoBase64 || null,
-            logoType: data.logoType || null,
-          });
-        }
-      } catch (e) {
-        console.warn("[BrandingContext] Fallback API fetch failed:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (!firebaseAvailable) {
-      fetchFallbackBranding();
-      return;
-    }
-
-    let unsubscribe: (() => void) | null = null;
-    try {
-      const brandingRef = doc(db, "settings", "branding");
-      unsubscribe = onSnapshot(
-        brandingRef,
-        (docSnapshot) => {
-          if (docSnapshot.exists()) {
-            const data = docSnapshot.data();
-            setBranding({
-              companyName: data.companyName || defaultBranding.companyName,
-              logoBase64: data.logoBase64 || null,
-              logoType: data.logoType || null,
-            });
-            setLoading(false);
-          } else {
-            fetchFallbackBranding();
-          }
-        },
-        (error) => {
-          console.warn("[BrandingContext] Firestore error, falling back to API:", error.message);
-          fetchFallbackBranding();
-        }
-      );
-    } catch (e) {
-      console.warn("[BrandingContext] Failed to subscribe to branding, falling back to API:", e);
-      fetchFallbackBranding();
-    }
-
-    return () => { if (unsubscribe) unsubscribe(); };
+    fetchBranding();
+    // Poll for branding changes every 60 seconds
+    const interval = setInterval(fetchBranding, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
-  const updateCompanyName = async (name: string) => {
-    if (firebaseAvailable) {
-      try {
-        const brandingRef = doc(db, "settings", "branding");
-        await setDoc(brandingRef, { companyName: name }, { merge: true });
-      } catch (e) {
-        console.warn("[BrandingContext] Firebase updateCompanyName failed:", e);
-      }
-    }
-    try {
-      const res = await fetch("/api/settings/branding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyName: name,
-          logoBase64: branding.logoBase64,
-          logoType: branding.logoType,
-          updatedBy: "System"
-        })
-      });
-      if (res.ok) {
-        setBranding(prev => ({ ...prev, companyName: name }));
-      }
-    } catch (e) {
-      console.error("[BrandingContext] Fallback API updateCompanyName failed:", e);
-    }
-  };
-
-  const updateLogo = async (base64: string | null, type: string | null) => {
-    if (firebaseAvailable) {
-      try {
-        const brandingRef = doc(db, "settings", "branding");
-        await setDoc(brandingRef, { logoBase64: base64, logoType: type }, { merge: true });
-      } catch (e) {
-        console.warn("[BrandingContext] Firebase updateLogo failed:", e);
-      }
-    }
-    try {
-      const res = await fetch("/api/settings/branding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyName: branding.companyName,
-          logoBase64: base64,
-          logoType: type,
-          updatedBy: "System"
-        })
-      });
-      if (res.ok) {
-        setBranding(prev => ({ ...prev, logoBase64: base64, logoType: type }));
-      }
-    } catch (e) {
-      console.error("[BrandingContext] Fallback API updateLogo failed:", e);
-    }
-  };
-
   useEffect(() => {
-    // Update document title dynamically
     if (branding.companyName) {
       const currentTitle = document.title;
       const parts = currentTitle.split(" - ");
       const pageName = parts[0] || "Ticklora";
       document.title = `${pageName} - ${branding.companyName}`;
     }
-
-    // Update favicon dynamically
     if (branding.logoBase64) {
       let faviconLink = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
       if (!faviconLink) {
@@ -159,6 +73,32 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     }
   }, [branding]);
 
+  const updateCompanyName = async (name: string) => {
+    try {
+      const res = await fetch("/api/settings/branding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyName: name, logoBase64: branding.logoBase64, logoType: branding.logoType, updatedBy: "System" }),
+      });
+      if (res.ok) setBranding((prev) => ({ ...prev, companyName: name }));
+    } catch (e) {
+      console.error("[BrandingContext] updateCompanyName failed:", e);
+    }
+  };
+
+  const updateLogo = async (base64: string | null, type: string | null) => {
+    try {
+      const res = await fetch("/api/settings/branding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyName: branding.companyName, logoBase64: base64, logoType: type, updatedBy: "System" }),
+      });
+      if (res.ok) setBranding((prev) => ({ ...prev, logoBase64: base64, logoType: type }));
+    } catch (e) {
+      console.error("[BrandingContext] updateLogo failed:", e);
+    }
+  };
+
   return (
     <BrandingContext.Provider value={{ branding, updateCompanyName, updateLogo, loading }}>
       {children}
@@ -168,8 +108,6 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
 
 export function useBranding() {
   const context = useContext(BrandingContext);
-  if (context === undefined) {
-    throw new Error("useBranding must be used within a BrandingProvider");
-  }
+  if (context === undefined) throw new Error("useBranding must be used within a BrandingProvider");
   return context;
 }

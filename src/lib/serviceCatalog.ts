@@ -1,6 +1,10 @@
+/**
+ * src/lib/serviceCatalog.ts
+ *
+ * Service catalog hook — Firebase/Firestore removed.
+ * Uses REST API polling against the Spring Boot backend.
+ */
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query } from "firebase/firestore";
-import { db } from "./firebase";
 
 export type Status = "active" | "inactive";
 
@@ -41,8 +45,8 @@ export type GroupItem = {
   name: string;
   code?: string;
   description?: string;
-  type: string;             // Service Desk, L2 Support, etc.
-  managerId?: string;       // Reference to users.uid
+  type: string;
+  managerId?: string;
   managerName?: string;
   emailAlias?: string;
   businessHours?: string;
@@ -50,7 +54,7 @@ export type GroupItem = {
   escalationGroupId?: string;
   parentGroupId?: string;
   defaultAssigneeId?: string;
-  status: Status;           // active/inactive
+  status: Status;
   autoAssignmentEnabled: boolean;
   roundRobinEnabled: boolean;
   skillTags?: string[];
@@ -77,7 +81,7 @@ export const GROUP_TYPES = [
   "Security Team",
   "Vendor Support",
   "Field Support",
-  "Approval Group"
+  "Approval Group",
 ];
 
 export type GroupMemberItem = {
@@ -86,7 +90,7 @@ export type GroupMemberItem = {
   userName: string;
   userEmail: string;
   groupId: string;
-  roleInGroup: string;      // Manager, Team Lead, etc.
+  roleInGroup: string;
   isPrimary: boolean;
   availabilityStatus: "available" | "away" | "offline";
   currentWorkload: number;
@@ -101,7 +105,7 @@ export const GROUP_MEMBER_ROLES = [
   "Team Lead",
   "Senior Agent",
   "Support Agent",
-  "Observer"
+  "Observer",
 ];
 
 export type AuditLog = {
@@ -116,11 +120,21 @@ export type AuditLog = {
   timestamp: any;
 };
 
-// Sort client-side so documents without createdAt are still included
 function sortByCreatedAt(a: any, b: any) {
-  const aTime = a.createdAt?.seconds ?? a.createdAt?.toMillis?.() ?? 0;
-  const bTime = b.createdAt?.seconds ?? b.createdAt?.toMillis?.() ?? 0;
+  const aTime = a.createdAt?.seconds ?? (a.createdAt ? new Date(a.createdAt).getTime() / 1000 : 0);
+  const bTime = b.createdAt?.seconds ?? (b.createdAt ? new Date(b.createdAt).getTime() / 1000 : 0);
   return aTime - bTime;
+}
+
+async function fetchCollection<T>(endpoint: string): Promise<T[]> {
+  try {
+    const res = await fetch(`/api/${endpoint}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
 }
 
 export function useServiceCatalog() {
@@ -130,38 +144,26 @@ export function useServiceCatalog() {
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [members, setMembers] = useState<GroupMemberItem[]>([]);
 
-  useEffect(() => {
-    // NO orderBy — fetch ALL docs and sort client-side
-    // This prevents Firestore from silently dropping docs without createdAt
-    const unsubs = [
-      onSnapshot(query(collection(db, "settings_categories")), (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        docs.sort(sortByCreatedAt);
-        setCategories(docs);
-      }),
-      onSnapshot(query(collection(db, "settings_subcategories")), (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        docs.sort(sortByCreatedAt);
-        setSubcategories(docs);
-      }),
-      onSnapshot(query(collection(db, "settings_service_providers")), (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        docs.sort(sortByCreatedAt);
-        setServiceProviders(docs);
-      }),
-      onSnapshot(query(collection(db, "settings_groups")), (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        docs.sort(sortByCreatedAt);
-        setGroups(docs);
-      }),
-      onSnapshot(query(collection(db, "settings_group_members")), (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        docs.sort(sortByCreatedAt);
-        setMembers(docs);
-      }),
-    ];
+  const fetchAll = async () => {
+    const [cats, subs, providers, grps, mems] = await Promise.all([
+      fetchCollection<CategoryItem>("settings_categories"),
+      fetchCollection<SubcategoryItem>("settings_subcategories"),
+      fetchCollection<ServiceProviderItem>("settings_service_providers"),
+      fetchCollection<GroupItem>("settings_groups"),
+      fetchCollection<GroupMemberItem>("settings_group_members"),
+    ]);
+    setCategories([...cats].sort(sortByCreatedAt));
+    setSubcategories([...subs].sort(sortByCreatedAt));
+    setServiceProviders([...providers].sort(sortByCreatedAt));
+    setGroups([...grps].sort(sortByCreatedAt));
+    setMembers([...mems].sort(sortByCreatedAt));
+  };
 
-    return () => unsubs.forEach((unsubscribe) => unsubscribe());
+  useEffect(() => {
+    fetchAll();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchAll, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   return { categories, subcategories, serviceProviders, groups, members };
@@ -171,12 +173,17 @@ export function getSubcategoriesForCategory(subcategories: SubcategoryItem[], ca
   return subcategories.filter((item) => item.categoryId === categoryId && item.status === "active");
 }
 
-export function getServiceProvidersForSubcategory(providers: ServiceProviderItem[], subcategoryId: string) {
+export function getServiceProvidersForSubcategory(
+  providers: ServiceProviderItem[],
+  subcategoryId: string
+) {
   return providers.filter((item) => item.subcategoryId === subcategoryId && item.status === "active");
 }
 
 export function getGroupsForServiceProvider(groups: GroupItem[], serviceProviderId: string) {
-  return groups.filter((group) => group.serviceProviderId === serviceProviderId && group.status === "active");
+  return groups.filter(
+    (group) => group.serviceProviderId === serviceProviderId && group.status === "active"
+  );
 }
 
 export function getMembersForGroup(members: GroupMemberItem[], groupId: string) {

@@ -1,19 +1,11 @@
+/**
+ * src/contexts/AuthContext.tsx
+ *
+ * Pure localStorage + Spring Boot REST API authentication.
+ * Firebase Auth has been fully removed.
+ */
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { ROLE_HIERARCHY, ROLE_LABELS, Role } from "../lib/roles";
-import { firebaseAvailable, auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
-
-// Import Firebase functions — they are no-ops when firebaseAvailable is false
-// because firebase.ts exports safe stubs in that case.
-import {
-  onAuthStateChanged,
-  signOut as firebaseSignOut,
-} from "firebase/auth";
-import {
-  doc,
-  onSnapshot,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
 
 interface AuthContextType {
   user: any | null;
@@ -39,20 +31,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sync auth state to localStorage so standalone pages (timesheet) can read it
   useEffect(() => {
     if (user && profile) {
-      localStorage.setItem('timesheet_user', JSON.stringify({
-        uid: user.uid,
-        name: profile.name || user.displayName || user.email?.split("@")[0] || "User",
-        email: user.email,
-        role: profile.role || 'user'
-      }));
+      localStorage.setItem(
+        "timesheet_user",
+        JSON.stringify({
+          uid: user.uid,
+          name: profile.name || user.displayName || user.email?.split("@")[0] || "User",
+          email: user.email,
+          role: profile.role || "user",
+        })
+      );
     } else if (!user) {
-      localStorage.removeItem('timesheet_user');
+      localStorage.removeItem("timesheet_user");
     }
   }, [user, profile]);
 
   useEffect(() => {
-    let unsubscribeProfile: (() => void) | null = null;
-    let unsubscribeAuth: (() => void) | null = null;
     let settled = false;
 
     const resolveLoading = () => {
@@ -63,15 +56,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // Safety timeout: if loading hasn't resolved in 8s, force it to false
-    // This prevents the blank white screen from hanging indefinitely.
+    // Safety timeout — prevent blank screen if something goes wrong
     const safetyTimeout = setTimeout(() => {
       console.warn("[AuthContext] Safety timeout — forcing loading=false");
       resolveLoading();
-    }, 8000);
+    }, 5000);
 
-    // --- Path 1: Existing localStorage session ---
-    const sessionStr = localStorage.getItem('demo_user');
+    // Check existing localStorage session
+    const sessionStr = localStorage.getItem("demo_user");
     if (sessionStr) {
       try {
         const sessionUser = JSON.parse(sessionStr);
@@ -83,152 +75,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(sessionUser);
         resolveLoading();
 
-        // Subscribe to real-time Firestore updates if Firebase is available
-        if (firebaseAvailable) {
-          try {
-            const docRef = doc(db, "users", sessionUser.uid);
-            unsubscribeProfile = onSnapshot(
-              docRef,
-              (docSnap) => {
-                if (docSnap.exists()) {
-                  const freshData = docSnap.data();
-                  const localRole = (sessionUser.role || "user") as Role;
-                  const freshRole = (freshData.role || "user") as Role;
-                  const finalRole =
-                    ROLE_HIERARCHY[freshRole] >= ROLE_HIERARCHY[localRole]
-                      ? freshRole
-                      : localRole;
-                  setProfile({ ...sessionUser, ...freshData, role: finalRole });
-                  localStorage.setItem('demo_user', JSON.stringify({
-                    uid: freshData.uid || sessionUser.uid,
-                    name: freshData.name || sessionUser.name,
-                    email: freshData.email || sessionUser.email,
-                    role: finalRole,
-                    phone: freshData.phone || "",
-                  }));
-                }
-              },
-              () => {
-                // Firestore listen failed — keep using cached session data silently
+        // Optionally refresh user profile from the API in background
+        if (sessionUser.uid) {
+          fetch(`/api/users/${sessionUser.uid}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((freshData) => {
+              if (freshData && freshData.uid) {
+                const merged = {
+                  uid: freshData.uid || sessionUser.uid,
+                  name: freshData.name || sessionUser.name,
+                  email: freshData.email || sessionUser.email,
+                  role: freshData.role || sessionUser.role || "user",
+                  phone: freshData.phone || "",
+                };
+                setProfile(merged);
+                localStorage.setItem("demo_user", JSON.stringify(merged));
               }
-            );
-          } catch {
-            // Firestore not available — silently continue with localStorage data
-          }
+            })
+            .catch(() => {});
         }
 
         return () => {
           clearTimeout(safetyTimeout);
-          if (unsubscribeProfile) unsubscribeProfile();
         };
       } catch {
-        localStorage.removeItem('demo_user');
+        localStorage.removeItem("demo_user");
       }
     }
 
-    // --- Path 2: Firebase not configured — resolve immediately, redirect to login ---
-    if (!firebaseAvailable) {
-      resolveLoading();
-      return () => { clearTimeout(safetyTimeout); };
-    }
-
-    // --- Path 3: Firebase auth state listener ---
-    try {
-      unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-        // Don't overwrite demo user state from localStorage
-        const demoSession = localStorage.getItem('demo_user');
-        if (!firebaseUser && demoSession) {
-          resolveLoading();
-          return;
-        }
-
-        setUser(firebaseUser);
-
-        if (unsubscribeProfile) {
-          unsubscribeProfile();
-          unsubscribeProfile = null;
-        }
-
-        if (firebaseUser) {
-          try {
-            const docRef = doc(db, "users", firebaseUser.uid);
-            unsubscribeProfile = onSnapshot(
-              docRef,
-              async (docSnap) => {
-                if (docSnap.exists()) {
-                  setProfile(docSnap.data());
-                } else {
-                  const initialProfile = {
-                    uid: firebaseUser.uid,
-                    name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
-                    email: firebaseUser.email,
-                    role: "user",
-                    createdAt: serverTimestamp(),
-                    lastLogin: serverTimestamp(),
-                  };
-                  try {
-                    await setDoc(docRef, initialProfile);
-                  } catch (err) {
-                    handleFirestoreError(err, OperationType.CREATE, `users/${firebaseUser.uid}`);
-                  }
-                  setProfile(initialProfile);
-                }
-                resolveLoading();
-              },
-              (err) => {
-                handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
-                resolveLoading();
-              }
-            );
-          } catch {
-            resolveLoading();
-          }
-        } else {
-          setProfile(null);
-          resolveLoading();
-        }
-      });
-    } catch (e) {
-      console.warn("[AuthContext] onAuthStateChanged failed:", e);
-      resolveLoading();
-    }
-
+    // No session — resolve immediately and let router redirect to /login
+    resolveLoading();
     return () => {
       clearTimeout(safetyTimeout);
-      if (unsubscribeAuth) unsubscribeAuth();
-      if (unsubscribeProfile) unsubscribeProfile();
     };
   }, []);
 
   const demoLogin = async (role: Role) => {
-    if (firebaseAvailable) {
-      try {
-        const { signInAnonymously } = await import("firebase/auth");
-        const { doc: fbDoc, setDoc: fbSetDoc, serverTimestamp: fbST } = await import("firebase/firestore");
-        const result = await signInAnonymously(auth);
-        const fbUser = result.user;
-        const docRef = fbDoc(db, "users", fbUser.uid);
-        await fbSetDoc(docRef, {
-          uid: fbUser.uid,
-          name: ROLE_LABELS[role],
-          email: `demo-${role}@connectit.local`,
-          role: role,
-          createdAt: fbST(),
-        });
-        localStorage.setItem('demo_user', JSON.stringify({
-          uid: fbUser.uid,
-          name: ROLE_LABELS[role],
-          email: `demo-${role}@connectit.local`,
-          role: role,
-        }));
+    // Roles other than ultra_super_admin use Password123!
+    const emailMap: Record<string, string> = {
+      user: "user@technosprint.net",
+      agent: "agent@technosprint.net",
+      admin: "admin@technosprint.net",
+      super_admin: "ulter@technosprint.net",
+      ultra_super_admin: "arun@technosprint.net",
+      sub_admin: "admin@technosprint.net",
+    };
+    const passwordMap: Record<string, string> = {
+      ultra_super_admin: "Poland@01",
+    };
+    const email = emailMap[role] || `demo-${role}@connectit.local`;
+    const password = passwordMap[role] || "Password123!";
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (res.ok) {
+        const userData = await res.json();
+        const sessionUser = {
+          uid: userData.uid,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role || role,
+          phone: userData.phone || "",
+        };
+        localStorage.setItem("demo_user", JSON.stringify(sessionUser));
+        setUser({ uid: sessionUser.uid, email: sessionUser.email, displayName: sessionUser.name });
+        setProfile(sessionUser);
         return;
-      } catch (err: any) {
-        console.warn("Firebase auth failed, using local demo mode:", err);
       }
+    } catch (err) {
+      console.warn("[AuthContext] demoLogin API failed:", err);
     }
 
-    // Local fallback
-    const mockUid = 'demo_' + role + '_' + Date.now();
+    // Local fallback — create a mock session
+    const mockUid = "demo_" + role + "_" + Date.now();
     const mockUser = {
       uid: mockUid,
       name: ROLE_LABELS[role],
@@ -236,21 +159,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role: role,
       isDemo: true,
     };
-    localStorage.setItem('demo_user', JSON.stringify(mockUser));
+    localStorage.setItem("demo_user", JSON.stringify(mockUser));
     setUser({ uid: mockUid, email: mockUser.email, displayName: mockUser.name });
     setProfile(mockUser);
   };
 
   const signOut = async () => {
-    try {
-      if (firebaseAvailable) {
-        await firebaseSignOut(auth);
-      }
-    } catch {
-      // Ignore
-    }
-    localStorage.removeItem('demo_user');
-    localStorage.removeItem('timesheet_user');
+    localStorage.removeItem("demo_user");
+    localStorage.removeItem("timesheet_user");
     setUser(null);
     setProfile(null);
   };

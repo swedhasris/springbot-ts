@@ -1,6 +1,9 @@
+/**
+ * src/contexts/TicketsContext.tsx
+ *
+ * Pure REST API tickets context — Firebase removed.
+ */
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { firebaseAvailable, db } from "../lib/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useAuth } from "./AuthContext";
 
 interface Ticket {
@@ -28,9 +31,7 @@ const TicketsContext = createContext<TicketsContextType | undefined>(undefined);
 
 export function useTickets() {
   const context = useContext(TicketsContext);
-  if (context === undefined) {
-    throw new Error("useTickets must be used within a TicketsProvider");
-  }
+  if (context === undefined) throw new Error("useTickets must be used within a TicketsProvider");
   return context;
 }
 
@@ -46,49 +47,44 @@ export function TicketsProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // If Firebase is not available, skip Firestore and use empty state
-    if (!firebaseAvailable) {
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
-    let unsubscribe: (() => void) | null = null;
+    const fetchOpenTickets = async () => {
+      try {
+        const res = await fetch("/api/tickets/open");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const mapped: Ticket[] = data.map((t: any) => ({
+          id: String(t.id || t.ticket_number || ""),
+          number: t.ticket_number || t.number || "",
+          title: t.title || "",
+          status: t.status || "New",
+          priority: t.priority || "4 - Low",
+          assignedTo: t.assigned_to || t.assignedTo || "",
+          assignedToName: t.assigned_to_name || t.assignedToName || "",
+          createdBy: t.created_by || t.createdBy || "",
+          createdAt: t.created_at || t.createdAt || null,
+          updatedAt: t.updated_at || t.updatedAt || null,
+        }));
+        setTickets(mapped);
+      } catch (err: any) {
+        console.warn("[TicketsContext] Fetch error (non-fatal):", err.message);
+        setError(null);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    try {
-      const ticketsRef = collection(db, "tickets");
-      const q = query(ticketsRef); // Fetch all to avoid missing index errors
-
-      unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const ticketsData = snapshot.docs
-            .map(d => ({ id: d.id, ...d.data() } as Ticket))
-            .filter(t => !["Resolved", "Closed"].includes(t.status));
-          setTickets(ticketsData);
-          setLoading(false);
-        },
-        (err) => {
-          // Non-fatal: Firestore errors should not crash the app
-          console.warn("[TicketsContext] Firestore error (non-fatal):", err.message);
-          setError(null); // Don't surface as an error to the UI
-          setLoading(false);
-        }
-      );
-    } catch (e: any) {
-      console.warn("[TicketsContext] Failed to subscribe to tickets:", e.message);
-      setLoading(false);
-    }
-
-    return () => { if (unsubscribe) unsubscribe(); };
+    fetchOpenTickets();
+    // Poll every 30 seconds for sidebar badge counts
+    const interval = setInterval(fetchOpenTickets, 30_000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const openTicketsCount = tickets.length;
-  const assignedToMeCount = tickets.filter(t =>
-    t.assignedTo === user?.uid ||
-    t.assignedTo === profile?.name
+  const assignedToMeCount = tickets.filter(
+    (t) => t.assignedTo === user?.uid || t.assignedTo === profile?.name
   ).length;
 
   const value: TicketsContextType = {
@@ -99,9 +95,5 @@ export function TicketsProvider({ children }: { children: React.ReactNode }) {
     error,
   };
 
-  return (
-    <TicketsContext.Provider value={value}>
-      {children}
-    </TicketsContext.Provider>
-  );
+  return <TicketsContext.Provider value={value}>{children}</TicketsContext.Provider>;
 }

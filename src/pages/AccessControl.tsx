@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { collection, onSnapshot, updateDoc, doc, serverTimestamp, setDoc, query, orderBy, where } from "firebase/firestore";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+// Firebase Auth removed — user creation uses the REST API
 import { auth, db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { Role, ROLE_HIERARCHY, ROLE_LABELS, ROLE_COLORS, assignableRoles, canManage } from "../lib/roles";
@@ -237,7 +237,7 @@ export function AccessControl() {
     setUpdating(null);
   };
 
-  /* ── Create new user ── */
+  /* ── Create new user via REST API ── */
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
@@ -252,27 +252,48 @@ export function AccessControl() {
     setCreating(true);
     setCreateError("");
     try {
-      // Create Firebase Auth account
-      const cred = await createUserWithEmailAndPassword(auth, newUser.email, newUser.password);
-      await updateProfile(cred.user, { displayName: newUser.name });
-      // Save profile to Firestore
-      await setDoc(doc(db, "users", cred.user.uid), {
-        uid:       cred.user.uid,
-        name:      newUser.name,
-        email:     newUser.email,
-        role:      newUser.role,
-        disabled:  false,
-        createdBy: profile?.uid,
-        createdAt: serverTimestamp(),
+      const uid = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      // Check if email already exists
+      const checkRes = await fetch("/api/users");
+      if (checkRes.ok) {
+        const existingUsers = await checkRes.json();
+        const emailExists = existingUsers.some((u: any) =>
+          u.email?.toLowerCase() === newUser.email.toLowerCase().trim()
+        );
+        if (emailExists) {
+          setCreateError("This email is already registered.");
+          setCreating(false);
+          return;
+        }
+      }
+
+      // Create user via REST API
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid,
+          name: newUser.name.trim(),
+          email: newUser.email.toLowerCase().trim(),
+          role: newUser.role,
+          password: newUser.password,
+          disabled: false,
+          createdBy: profile?.uid,
+          is_active: true,
+          is_demo: false,
+        }),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to create user.");
+      }
+
       setShowCreate(false);
       setNewUser({ name: "", email: "", password: "", role: "user" });
     } catch (err: any) {
-      const code = err.code;
-      if (code === "auth/email-already-in-use") setCreateError("This email is already registered.");
-      else if (code === "auth/invalid-email")   setCreateError("Invalid email address.");
-      else if (code === "auth/weak-password")   setCreateError("Password is too weak.");
-      else setCreateError(err.message || "Failed to create user.");
+      setCreateError(err.message || "Failed to create user.");
     }
     setCreating(false);
   };

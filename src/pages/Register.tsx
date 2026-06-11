@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { doc, setDoc, serverTimestamp, getDocs, collection, query, where } from "firebase/firestore";
-import { db, firebaseAvailable } from "../lib/firebase";
+// Firebase removed — registration uses the REST API
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, UserPlus, Mail, Lock, Phone, ShieldCheck, User } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -66,112 +65,49 @@ export function Register() {
 
     setIsLoading(true);
     try {
-      if (!firebaseAvailable) {
-        // Backend API fallback registration when Firebase is not configured
-        const uid = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const uid = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-        // Check if email already exists via API
-        try {
-          const checkRes = await fetch("/api/users");
-          if (checkRes.ok) {
-            const existingUsers = await checkRes.json();
-            const emailExists = existingUsers.some((u: any) =>
-              u.email?.toLowerCase() === email.toLowerCase().trim()
-            );
-            if (emailExists) {
-              setError("This email is already registered. Please login instead.");
-              setIsLoading(false);
-              return;
-            }
+      // Check if email already exists via API
+      try {
+        const checkRes = await fetch("/api/users");
+        if (checkRes.ok) {
+          const existingUsers = await checkRes.json();
+          const emailExists = existingUsers.some((u: any) =>
+            u.email?.toLowerCase() === email.toLowerCase().trim()
+          );
+          if (emailExists) {
+            setError("This email is already registered. Please login instead.");
+            setIsLoading(false);
+            return;
           }
-        } catch (e) {
-          console.warn("[Register] Could not check existing users:", e);
         }
+      } catch (e) {
+        console.warn("[Register] Could not check existing users:", e);
+      }
 
-        // Create user via backend API
-        const res = await fetch("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            uid,
-            name: name.trim(),
-            email: email.toLowerCase().trim(),
-            role,
-            phone: phone.trim(),
-            password: password,
-            password_hash: simpleHash(password),
-            is_active: true,
-            is_demo: false,
-          }),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to create account via API.");
-        }
-
-        // Auto-login: save to localStorage
-        localStorage.setItem("demo_user", JSON.stringify({
+      // Create user via backend API
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           uid,
           name: name.trim(),
           email: email.toLowerCase().trim(),
           role,
-          phone: phone.trim()
-        }));
+          phone: phone.trim(),
+          password: password,
+          password_hash: simpleHash(password),
+          is_active: true,
+          is_demo: false,
+        }),
+      });
 
-        setSuccess("Account created successfully! Redirecting...");
-        setTimeout(() => { window.location.href = "/"; }, 1000);
-        return;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to create account via API.");
       }
 
-      // Check if email already exists in Firestore
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", email.toLowerCase().trim()));
-      const existing = await getDocs(q);
-      
-      if (!existing.empty) {
-        setError("This email is already registered. Please login instead.");
-        setIsLoading(false);
-        return;
-      }
-
-      // Create user ID and profile
-      const uid = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const userProfile = {
-        uid,
-        name: name.trim(),
-        email: email.toLowerCase().trim(),
-        role,
-        phone: phone.trim(),
-        passwordHash: simpleHash(password),
-        createdAt: serverTimestamp(),
-        disabled: false
-      };
-
-      // Save to Firestore
-      await setDoc(doc(db, "users", uid), userProfile);
-
-      // Also save to backend API for MySQL sync
-      try {
-        await fetch("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            uid,
-            name: name.trim(),
-            email: email.toLowerCase().trim(),
-            role,
-            phone: phone.trim(),
-            password_hash: simpleHash(password),
-            is_active: true,
-            is_demo: false,
-          }),
-        });
-      } catch (e) {
-        console.warn("[Register] Backend API sync failed (Firestore is primary):", e);
-      }
-
-      // Auto-login: save to localStorage (same mechanism as demo login)
+      // Auto-login: save to localStorage
       localStorage.setItem("demo_user", JSON.stringify({
         uid,
         name: name.trim(),
@@ -181,12 +117,7 @@ export function Register() {
       }));
 
       setSuccess("Account created successfully! Redirecting...");
-      
-      // Redirect after brief success message
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 1000);
-      
+      setTimeout(() => { window.location.href = "/"; }, 1000);
     } catch (err: any) {
       console.error("Registration error:", err);
       setError("Registration failed. Please try again. " + (err.message || ""));

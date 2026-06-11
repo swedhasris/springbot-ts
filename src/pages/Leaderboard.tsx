@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Trophy, Medal, Star, Target, RefreshCw, ShieldCheck, Clock, Zap, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
-import { db, firebaseAvailable } from "../lib/firebase";
+import { db } from "../lib/firebase";
 import { cn } from "../lib/utils";
 
 // Module-level helpers (accessible to all sub-components in this file)
@@ -149,13 +149,6 @@ export function Leaderboard() {
 
   const fetchLeaderboard = async () => {
     setError(null);
-    // If Firebase is not configured, show empty leaderboard gracefully
-    if (!firebaseAvailable) {
-      setLeaderboard([]);
-      setLastUpdated(new Date());
-      setLoading(false);
-      return;
-    }
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);

@@ -13,7 +13,11 @@ export default defineConfig(({mode}) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        // Firebase has been fully removed — all aliases point to local stubs/API client
         'firebase/firestore': path.resolve(__dirname, './src/lib/firestore-fallback.ts'),
+        'firebase/auth': path.resolve(__dirname, './src/lib/firebase-auth-stub.ts'),
+        'firebase/app': path.resolve(__dirname, './src/lib/firebase-app-stub.ts'),
+        '@firebase/firestore': path.resolve(__dirname, './src/lib/firestore-fallback.ts'),
       },
     },
     server: {

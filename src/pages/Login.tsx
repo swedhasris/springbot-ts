@@ -1,6 +1,4 @@
 import React, { useState } from "react";
-import { doc, setDoc, serverTimestamp, getDocs, collection, query, where } from "firebase/firestore";
-import { db, firebaseAvailable } from "../lib/firebase";
 import { Link, useNavigate } from "react-router-dom";
 import { ROLE_LABELS, type Role } from "../lib/roles";
 import { Crown, Shield, UserCog, Eye, Loader2 } from "lucide-react";
@@ -92,29 +90,7 @@ export function Login() {
         return;
       }
 
-      // Secondary: Try Firestore direct only when the client initialized correctly
-      if (firebaseAvailable) {
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("email", "==", emailVal.toLowerCase().trim()));
-        const snapshot = await getDocs(q);
 
-        if (!snapshot.empty) {
-          const userDoc = snapshot.docs[0];
-          const userData = userDoc.data();
-
-          if (userData.passwordHash === simpleHash(passwordVal)) {
-            localStorage.setItem("demo_user", JSON.stringify({
-              uid: userData.uid || userDoc.id,
-              name: userData.name,
-              email: userData.email,
-              role: userData.role || "user",
-              phone: userData.phone || ""
-            }));
-            window.location.href = "/";
-            return;
-          }
-        }
-      }
 
       const errorData = await response.json().catch(() => ({}));
       setError(errorData.error || "Invalid email or password.");
