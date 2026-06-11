@@ -39,9 +39,14 @@ public class SlaController {
         return ResponseEntity.ok(Map.of("success", true));
     }
 
-    @GetMapping("/sla/breaches")
+    @GetMapping({"/sla/breaches", "/sla-breaches/all"})
     public ResponseEntity<?> breaches() {
         return ResponseEntity.ok(slaService.getBreaches());
+    }
+
+    @GetMapping("/sla-breaches/user/{userId}")
+    public ResponseEntity<?> breachesByUser(@PathVariable String userId) {
+        return ResponseEntity.ok(slaService.getBreachesByUser(userId));
     }
 
     @GetMapping("/sla/audit/{ticketId}")

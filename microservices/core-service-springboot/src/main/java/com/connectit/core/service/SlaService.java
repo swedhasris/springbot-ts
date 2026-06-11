@@ -32,6 +32,10 @@ public class SlaService {
         return breachRepo.findAll();
     }
 
+    public List<SLABreach> getBreachesByUser(String userId) {
+        return breachRepo.findByAssignedUser(userId);
+    }
+
     public List<Object[]> getSlaAuditLogs(String ticketId) {
         return activityRepo.findByTicketIdOrderByCreatedAtAsc(Long.parseLong(ticketId))
             .stream()

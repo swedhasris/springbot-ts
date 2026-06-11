@@ -513,15 +513,24 @@ export class ActivityWatcher {
     // Only request getDisplayMedia if server-side capture is unavailable
     // (i.e., not running in Node/Electron context)
     if (this.opts.captureScreenshots) {
-      // Test if server-side capture works first
+      // Actually TEST if server-side capture works (don't assume localhost is OK)
       let serverCaptureWorks = false;
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        serverCaptureWorks = true;
-      } else {
-        try {
-          const test = await fetch('/api/capture-screen', { signal: AbortSignal.timeout(5000) });
-          serverCaptureWorks = test.ok;
-        } catch { /* server capture not available */ }
+      try {
+        const test = await fetch('/api/capture-screen', { signal: AbortSignal.timeout(12000) });
+        if (test.ok) {
+          const testData = await test.json();
+          // Validate: a real screenshot data_url is > 1000 chars (a mock/blank would be tiny)
+          serverCaptureWorks = !!(testData.data_url && testData.data_url.length > 1000);
+          if (serverCaptureWorks) {
+            console.log('[ActivityWatcher] Server capture verified OK (' + Math.round(testData.data_url.length / 1024) + ' KB)');
+          } else {
+            console.warn('[ActivityWatcher] Server capture response too small — likely mock/blank');
+          }
+        } else {
+          console.warn('[ActivityWatcher] Server capture returned status', test.status);
+        }
+      } catch (err) {
+        console.warn('[ActivityWatcher] Server capture test failed:', err);
       }
 
       // Only fall back to getDisplayMedia if server capture doesn't work
@@ -606,13 +615,14 @@ export class ActivityWatcher {
     }
 
     // ── Method 2: Server-side OS capture via /api/capture-screen ──
-    // The Node.js server uses screenshot-desktop to capture the entire screen
-    // silently at OS level — no browser permission dialog needed.
+    // The backend uses PowerShell + .NET (or java.awt.Robot) to capture the
+    // entire screen silently at OS level — no browser permission dialog needed.
     try {
       const res = await fetch('/api/capture-screen');
       if (res.ok) {
         const data = await res.json();
-        if (data.data_url && data.image_url) {
+        // Validate: real screenshot data_url must be > 1000 chars (reject mock/blank)
+        if (data.data_url && data.image_url && data.data_url.length > 1000) {
           // Convert base64 dataUrl to Blob
           const fetchRes = await fetch(data.data_url);
           const blob = await fetchRes.blob();
@@ -621,6 +631,8 @@ export class ActivityWatcher {
             blob,
             filename: data.filename || filename,
           };
+        } else {
+          console.warn('[ActivityCapture] Server capture response too small:', data.data_url?.length, 'chars');
         }
       }
     } catch (err) {

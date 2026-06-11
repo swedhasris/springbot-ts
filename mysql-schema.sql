@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     ticket_number VARCHAR(50) UNIQUE NOT NULL,   -- INCxxxxxxx format
     caller VARCHAR(255) NOT NULL,
     caller_user_id VARCHAR(128),                 -- Reference to users.uid
+    caller_email VARCHAR(255),
     affected_user VARCHAR(255),
     affected_user_id VARCHAR(128),
     category VARCHAR(100),
@@ -74,6 +75,13 @@ CREATE TABLE IF NOT EXISTS tickets (
     resolution_sla_status ENUM('In Progress', 'Completed', 'Breached', 'At Risk') DEFAULT 'In Progress',
     points INT DEFAULT 0,
     approval_status ENUM('Not Required', 'Pending', 'Approved', 'Rejected') DEFAULT 'Not Required',
+    affected_user_email VARCHAR(255) NULL,
+    reporting_user_email VARCHAR(255) NULL,
+    resolution_code VARCHAR(255) NULL,
+    resolution_notes TEXT NULL,
+    resolution_method VARCHAR(255) NULL,
+    closure_reason VARCHAR(255) NULL,
+    company_id BIGINT NULL,
     parent_ticket_id INT NULL,
     FOREIGN KEY (parent_ticket_id) REFERENCES tickets(id) ON DELETE SET NULL,
     INDEX idx_ticket_number (ticket_number),
@@ -133,6 +141,9 @@ CREATE TABLE IF NOT EXISTS ticket_activities (
     ticket_id INT NOT NULL,
     activity_type VARCHAR(50) NOT NULL,            -- e.g., 'work_note', 'comment', 'email', 'status_change', 'system'
     visibility_type VARCHAR(50) NOT NULL,          -- e.g., 'internal', 'public'
+    channel VARCHAR(50) DEFAULT 'portal',
+    message_id VARCHAR(255) NULL,
+    thread_id VARCHAR(255) NULL,
     created_by VARCHAR(128),
     created_by_name VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

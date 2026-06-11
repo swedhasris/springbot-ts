@@ -24,10 +24,6 @@ export default defineConfig(({mode}) => {
           target: 'http://localhost:3000',
           changeOrigin: true,
         },
-        '/timesheet': {
-          target: 'http://localhost:3000',
-          changeOrigin: true,
-        },
       },
       hmr: process.env.DISABLE_HMR !== 'true',
     },

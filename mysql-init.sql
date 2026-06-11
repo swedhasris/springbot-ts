@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     ticket_number VARCHAR(50) UNIQUE NOT NULL,
     caller VARCHAR(255) NOT NULL,
     caller_user_id VARCHAR(128),
+    caller_email VARCHAR(255),
     affected_user VARCHAR(255),
     affected_user_id VARCHAR(128),
     category VARCHAR(100),
@@ -82,6 +83,13 @@ CREATE TABLE IF NOT EXISTS tickets (
     resolution_sla_start_time TIMESTAMP NULL,
     points INT DEFAULT 0,
     approval_status ENUM('Not Required', 'Pending', 'Approved', 'Rejected') DEFAULT 'Not Required',
+    affected_user_email VARCHAR(255) NULL,
+    reporting_user_email VARCHAR(255) NULL,
+    resolution_code VARCHAR(255) NULL,
+    resolution_notes TEXT NULL,
+    resolution_method VARCHAR(255) NULL,
+    closure_reason VARCHAR(255) NULL,
+    company_id BIGINT NULL,
     parent_ticket_id INT NULL,
     sla_delay_meta_json JSON NULL,
     sla_delay_logs_json JSON NULL,
@@ -143,6 +151,9 @@ CREATE TABLE IF NOT EXISTS ticket_activities (
     ticket_id VARCHAR(128) NOT NULL,  -- VARCHAR to support both INT IDs and Firebase IDs
     activity_type VARCHAR(50) NOT NULL,
     visibility_type VARCHAR(50) NOT NULL,
+    channel VARCHAR(50) DEFAULT 'portal',
+    message_id VARCHAR(255) NULL,
+    thread_id VARCHAR(255) NULL,
     created_by VARCHAR(128),
     created_by_name VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -800,24 +811,16 @@ CREATE TABLE IF NOT EXISTS settings_groups (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- MESSAGE HISTORY TABLE (was missing from original mysql-schema.sql)
+-- MESSAGE HISTORY TABLE
 -- ============================================================
 CREATE TABLE IF NOT EXISTS message_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    ticket_id VARCHAR(128),
-    direction VARCHAR(20),
-    channel VARCHAR(50),
-    sender VARCHAR(255),
+    user_id VARCHAR(128) NOT NULL,
+    user_name VARCHAR(255),
+    message_type VARCHAR(50) NOT NULL,
     recipient VARCHAR(255),
-    subject VARCHAR(500),
-    body MEDIUMTEXT,
-    status VARCHAR(50),
-    metadata_json JSON,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_ticket_id (ticket_id),
-    INDEX idx_direction (direction),
-    INDEX idx_channel (channel),
-    INDEX idx_created_at (created_at)
+    message_content TEXT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -1019,9 +1022,10 @@ INSERT IGNORE INTO system_settings (setting_key, setting_value, setting_type, de
 -- PERFORMANCE: Additional composite indexes for dashboard queries
 -- ============================================================
 -- (Run these separately if they already exist — safe to skip on error)
-CREATE INDEX IF NOT EXISTS idx_tickets_status_created ON tickets(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_tickets_assignee_status ON tickets(assigned_to, status, created_at);
-CREATE INDEX IF NOT EXISTS idx_tickets_priority_status ON tickets(priority, status);
-CREATE INDEX IF NOT EXISTS idx_breaches_user_status ON sla_breaches(assigned_user, status);
-CREATE INDEX IF NOT EXISTS idx_timesheets_user_status ON timesheets(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read, created_at);
+CREATE INDEX idx_tickets_status_created ON tickets(status, created_at);
+CREATE INDEX idx_tickets_assignee_status ON tickets(assigned_to, status, created_at);
+CREATE INDEX idx_tickets_priority_status ON tickets(priority, status);
+CREATE INDEX idx_breaches_user_status ON sla_breaches(assigned_user, status);
+CREATE INDEX idx_timesheets_user_status ON timesheets(user_id, status);
+CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read, created_at);
+

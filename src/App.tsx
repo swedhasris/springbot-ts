@@ -145,6 +145,14 @@ function AppBody() {
                   }
                 />
                 <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
                   path="/tickets"
                   element={
                     <ProtectedRoute>

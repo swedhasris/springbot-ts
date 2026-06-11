@@ -73,8 +73,9 @@ export function SLATimer({
     // Resolution SLA: waiting for first response before starting
     if (waitUntil !== undefined && (waitUntil === null || waitUntil === "")) {
       setStatus("waiting");
-      setDisplayTime("PENDING");
+      setDisplayTime("-- : -- : --");
       setBreachDuration("");
+      setPercentage(0);
       return;
     }
 
@@ -155,6 +156,7 @@ export function SLATimer({
     if (status === "met") return "COMPLETED";
     if (status === "breached") return "SLA BREACHED";
     if (status === "paused") return "PAUSED";
+    if (status === "waiting") return "PENDING";
     if (percentage >= 90) return "CRITICAL NEAR BREACH";
     if (percentage >= 81) return "NEAR BREACH";
     if (percentage >= 51) return "WARNING";
@@ -165,6 +167,7 @@ export function SLATimer({
     if (status === "met") return "bg-emerald-500";
     if (status === "breached") return "bg-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)]";
     if (status === "paused") return "bg-amber-400";
+    if (status === "waiting") return "bg-blue-400 dark:bg-blue-500";
     if (percentage >= 90) return "bg-orange-600";
     if (percentage >= 81) return "bg-orange-500";
     if (percentage >= 51) return "bg-yellow-500";
@@ -183,14 +186,7 @@ export function SLATimer({
     return "text-blue-600";
   };
 
-  if (status === "waiting") {
-    return (
-      <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 rounded-md border border-border/50">
-        <Clock className="w-3 h-3 text-muted-foreground" />
-        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest italic">Pending Handover</span>
-      </div>
-    );
-  }
+
 
   return (
     <div className="flex flex-col gap-1.5 p-2 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-all group min-w-[160px]">
@@ -203,8 +199,9 @@ export function SLATimer({
           "text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter transition-all",
           status === "met" ? "bg-emerald-50 text-emerald-700" :
             status === "breached" ? "bg-red-100 text-red-700 animate-bounce" :
-              percentage >= 81 ? "bg-orange-100 text-orange-700" :
-                percentage >= 51 ? "bg-yellow-100 text-yellow-700" : "bg-blue-50 text-blue-700"
+              status === "waiting" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-100/30" :
+                percentage >= 81 ? "bg-orange-100 text-orange-700" :
+                  percentage >= 51 ? "bg-yellow-100 text-yellow-700" : "bg-blue-50 text-blue-700"
         )}>
           {getEscalationStatus()}
         </span>
@@ -237,10 +234,21 @@ export function SLATimer({
 
       {/* Escalation Notification Preview */}
       <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/30">
-        <span className="text-[7px] text-muted-foreground/80 font-bold uppercase tracking-tight">
-          {percentage >= 100 ? "Escalated: Manager" : percentage >= 90 ? "Escalated: Lead" : percentage >= 80 ? "Escalated: Engineer" : "Status: Optimal"}
-        </span>
-        <AlertCircle className={cn("w-2.5 h-2.5", percentage >= 80 ? "text-orange-500" : "text-muted-foreground/20")} />
+        {status === "waiting" ? (
+          <>
+            <span className="text-[7px] text-muted-foreground/80 font-bold uppercase tracking-tight flex items-center gap-1">
+              Pending Handover
+            </span>
+            <Clock className="w-2.5 h-2.5 text-muted-foreground/40" />
+          </>
+        ) : (
+          <>
+            <span className="text-[7px] text-muted-foreground/80 font-bold uppercase tracking-tight">
+              {percentage >= 100 ? "Escalated: Manager" : percentage >= 90 ? "Escalated: Lead" : percentage >= 80 ? "Escalated: Engineer" : "Status: Optimal"}
+            </span>
+            <AlertCircle className={cn("w-2.5 h-2.5", percentage >= 80 ? "text-orange-500" : "text-muted-foreground/20")} />
+          </>
+        )}
       </div>
     </div>
   );

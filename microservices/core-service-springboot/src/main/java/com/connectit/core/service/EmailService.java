@@ -25,6 +25,7 @@ public class EmailService {
     private final EmailLogRepository          emailLogRepo;
     private final CompanyEmailConfigRepository configRepo;
     private final JavaMailSender              mailSender;
+    private final com.connectit.core.repository.UserRepository userRepo;
 
     @Value("${app.mail.from:support@technosprint.net}")
     private String defaultFrom;
@@ -196,8 +197,11 @@ public class EmailService {
     private boolean isEmail(String s) { return s != null && s.contains("@"); }
 
     private String resolveAgentEmail(Ticket t) {
-        // Returns assigned agent email placeholder — full resolution requires DB lookup
-        return t.getAssignedTo() != null ? t.getAssignedTo() : "";
+        if (t.getAssignedTo() == null) return "";
+        // Look up the user's actual email from the database using their UID
+        return userRepo.findByUid(t.getAssignedTo())
+            .map(com.connectit.core.model.User::getEmail)
+            .orElse(t.getAssignedTo()); // Fall back to assignedTo if user not found (might already be an email)
     }
 
     private String ticketTable(Ticket t) {

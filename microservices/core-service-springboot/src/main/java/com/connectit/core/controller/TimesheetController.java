@@ -336,7 +336,7 @@ public class TimesheetController {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing user_id or session_id"));
         }
 
-        String startStr = startTime != null ? startTime : LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        String startStr = formatDateTimeToSql(startTime != null ? startTime : LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         String insertSql = "INSERT INTO activity_sessions (session_id, user_id, user_name, start_time, status, ticket_number) VALUES (?, ?, ?, ?, ?, ?)";
         
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -367,7 +367,11 @@ public class TimesheetController {
         for (Map.Entry<String, Object> entry : body.entrySet()) {
             if (!"id".equals(entry.getKey())) {
                 fields.add(entry.getKey() + " = ?");
-                values.add(entry.getValue());
+                Object val = entry.getValue();
+                if ("start_time".equals(entry.getKey()) || "stop_time".equals(entry.getKey())) {
+                    val = formatDateTimeToSql(val);
+                }
+                values.add(val);
             }
         }
 
@@ -428,7 +432,11 @@ public class TimesheetController {
         for (Map.Entry<String, Object> entry : body.entrySet()) {
             fields.add(entry.getKey());
             placeholders.add("?");
-            values.add(entry.getValue());
+            Object val = entry.getValue();
+            if ("captured_at".equals(entry.getKey()) || "created_at".equals(entry.getKey())) {
+                val = formatDateTimeToSql(val);
+            }
+            values.add(val);
         }
 
         String insertSql = "INSERT INTO activity_entries (" + String.join(", ", fields) + ") VALUES (" + String.join(", ", placeholders) + ")";
@@ -623,5 +631,30 @@ public class TimesheetController {
         } catch (Exception e) {
             System.err.println("Failed to send timesheet approval email to " + toEmail + ": " + e.getMessage());
         }
+    }
+
+    private String formatDateTimeToSql(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String str = value.toString().trim();
+        if (str.isEmpty()) {
+            return null;
+        }
+        String replaced = str.replace('T', ' ');
+        if (replaced.endsWith("Z")) {
+            replaced = replaced.substring(0, replaced.length() - 1);
+        }
+        int dotIndex = replaced.indexOf('.');
+        if (dotIndex != -1) {
+            replaced = replaced.substring(0, dotIndex);
+        }
+        if (replaced.length() == 16) {
+            replaced += ":00";
+        }
+        if (replaced.length() > 19) {
+            replaced = replaced.substring(0, 19);
+        }
+        return replaced;
     }
 }

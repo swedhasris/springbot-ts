@@ -17,6 +17,7 @@ function toMs(val: any): number {
 
 import { SLATimer } from "../components/SLATimer";
 import { getEffectiveSlaDelayState } from "../lib/slaDelayUtils";
+import { calculateSLADeadline } from "../lib/slaUtils";
 
 const PRIORITY_COLORS: Record<string, string> = {
   "1 - Critical": "#ef4444", // Neon Red
@@ -330,6 +331,24 @@ export function Dashboard() {
                       "bg-cyan-500/10 text-cyan-500 border border-cyan-500/20";
                 const isPaused = t.status === "On Hold" || t.status === "Waiting for Customer";
 
+                const createdTime = t.createdAt?.seconds 
+                  ? new Date(t.createdAt.seconds * 1000) 
+                  : (typeof t.createdAt === 'string' ? new Date(t.createdAt) : new Date());
+
+                const fallbackResponseDeadline = t.responseDeadline || 
+                  (t.createdAt ? calculateSLADeadline(createdTime, 2, {
+                    businessHours: t.businessHours,
+                    excludeWeekends: t.excludeWeekends,
+                    excludeHolidays: t.excludeHolidays
+                  }).toISOString() : undefined);
+
+                const fallbackResolutionDeadline = t.resolutionDeadline || 
+                  (t.createdAt ? calculateSLADeadline(createdTime, 24, {
+                    businessHours: t.businessHours,
+                    excludeWeekends: t.excludeWeekends,
+                    excludeHolidays: t.excludeHolidays
+                  }).toISOString() : undefined);
+
                 return (
                   <tr key={t.id} className="hover:bg-blue-500/5 transition-colors">
                     <td className="p-3">
@@ -352,7 +371,7 @@ export function Dashboard() {
                       <div className="flex flex-col gap-1 bg-muted/20 dark:bg-black/10 p-1.5 rounded-lg border border-border/30 dark:border-white/5 max-w-[130px]">
                         <SLATimer
                           label="Resp"
-                          deadline={t.responseDeadline}
+                          deadline={fallbackResponseDeadline}
                           metAt={t.firstResponseAt}
                           isPaused={isPaused}
                           onHoldStart={t.onHoldStart}
@@ -360,7 +379,7 @@ export function Dashboard() {
                         />
                         <SLATimer
                           label="Res"
-                          deadline={t.resolutionDeadline}
+                          deadline={fallbackResolutionDeadline}
                           metAt={t.resolvedAt}
                           isPaused={isPaused}
                           onHoldStart={t.onHoldStart}

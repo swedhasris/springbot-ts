@@ -37,6 +37,7 @@ public class SettingsController {
             }
             return ResponseEntity.ok(Map.of("companyName", "Connect", "logoBase64", Optional.empty(), "logoType", Optional.empty()));
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
@@ -75,6 +76,7 @@ public class SettingsController {
 
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }

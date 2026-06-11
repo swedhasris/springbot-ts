@@ -257,10 +257,52 @@ public class TicketService {
         if (data.containsKey("priority"))          t.setPriority((String) data.get("priority"));
         if (data.containsKey("impact"))            t.setImpact((String) data.get("impact"));
         if (data.containsKey("urgency"))           t.setUrgency((String) data.get("urgency"));
+        if (data.containsKey("channel"))           t.setChannel((String) data.get("channel"));
+        if (data.containsKey("subcategory"))       t.setSubcategory((String) data.get("subcategory"));
+        if (data.containsKey("service"))           t.setService((String) data.get("service"));
+        if (data.containsKey("serviceOffering"))   t.setServiceOffering((String) data.get("serviceOffering"));
+        if (data.containsKey("cmdbItem"))          t.setCmdbItem((String) data.get("cmdbItem"));
         if (data.containsKey("assignmentGroup"))   t.setAssignmentGroup((String) data.get("assignmentGroup"));
         if (data.containsKey("assignedTo"))        t.setAssignedTo((String) data.get("assignedTo"));
         if (data.containsKey("assignedToName"))    t.setAssignedToName((String) data.get("assignedToName"));
         if (data.containsKey("responseSlaStatus")) t.setResponseSlaStatus((String) data.get("responseSlaStatus"));
         if (data.containsKey("resolutionSlaStatus")) t.setResolutionSlaStatus((String) data.get("resolutionSlaStatus"));
+        if (data.containsKey("onHoldReason"))      t.setOnHoldReason((String) data.get("onHoldReason"));
+        if (data.containsKey("approvalStatus"))    t.setApprovalStatus((String) data.get("approvalStatus"));
+        if (data.containsKey("resolutionCode"))    t.setResolutionCode((String) data.get("resolutionCode"));
+        if (data.containsKey("resolutionNotes"))   t.setResolutionNotes((String) data.get("resolutionNotes"));
+        if (data.containsKey("resolutionMethod"))  t.setResolutionMethod((String) data.get("resolutionMethod"));
+        if (data.containsKey("closureReason"))     t.setClosureReason((String) data.get("closureReason"));
+        if (data.containsKey("resolvedBy"))        t.setResolvedBy((String) data.get("resolvedBy"));
+        // SLA delay metadata (JSON strings)
+        if (data.containsKey("slaDelayMeta")) {
+            Object meta = data.get("slaDelayMeta");
+            t.setSlaDelayMetaJson(meta != null ? meta.toString() : null);
+        }
+        if (data.containsKey("slaDelayLogs")) {
+            Object logs = data.get("slaDelayLogs");
+            t.setSlaDelayLogsJson(logs != null ? logs.toString() : "[]");
+        }
+        // Paused time tracking
+        if (data.containsKey("totalPausedTime") || data.containsKey("totalPausedTimeMs")) {
+            Object val = data.containsKey("totalPausedTimeMs") ? data.get("totalPausedTimeMs") : data.get("totalPausedTime");
+            if (val instanceof Number) t.setTotalPausedTimeMs(((Number) val).longValue());
+        }
+        // On-hold start (ISO string or null)
+        if (data.containsKey("onHoldStart")) {
+            Object ohs = data.get("onHoldStart");
+            if (ohs == null) { t.setOnHoldStart(null); }
+            else if (ohs instanceof String && !((String) ohs).isBlank()) {
+                try { t.setOnHoldStart(LocalDateTime.parse((String) ohs)); } catch (Exception ignored) {}
+            }
+        }
+        // First response tracking
+        if (data.containsKey("firstResponseAt")) {
+            Object fra = data.get("firstResponseAt");
+            if (fra == null) { t.setFirstResponseAt(null); }
+            else if (fra instanceof String && !((String) fra).isBlank()) {
+                try { t.setFirstResponseAt(LocalDateTime.parse((String) fra)); } catch (Exception ignored) {}
+            }
+        }
     }
 }

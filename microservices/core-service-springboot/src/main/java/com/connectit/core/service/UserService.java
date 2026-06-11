@@ -48,9 +48,6 @@ public class UserService {
 
     @Transactional
     public User create(User user) {
-        if (user.getPasswordHash() == null && user.getPasswordHash() == null) {
-            // no hash set — leave null, caller should set it
-        }
         return userRepository.save(user);
     }
 

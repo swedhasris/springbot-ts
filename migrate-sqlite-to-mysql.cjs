@@ -386,17 +386,23 @@ async function run() {
   // ── message_history ────────────────────────────────────────────────────
   await migrateTable(sqliteDb, mysqlConn, 'message_history', async (db, row) => {
     await db.execute(`
-      INSERT INTO message_history (id, ticket_id, direction, channel, sender,
-        recipient, subject, body, status, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?)
-      ON DUPLICATE KEY UPDATE status = VALUES(status)
+      INSERT INTO message_history (id, user_id, user_name, message_type, recipient, message_content, sent_at)
+      VALUES (?,?,?,?,?,?,?)
+      ON DUPLICATE KEY UPDATE
+        user_id = VALUES(user_id),
+        user_name = VALUES(user_name),
+        message_type = VALUES(message_type),
+        recipient = VALUES(recipient),
+        message_content = VALUES(message_content),
+        sent_at = VALUES(sent_at)
     `, [
-      row.id, row.ticket_id || null,
-      row.direction || null, row.channel || null,
-      row.sender || null, row.recipient || null,
-      row.subject || null, row.body || null,
-      row.status || null,
-      formatMySQLDate(row.created_at || new Date())
+      row.id,
+      row.user_id,
+      row.user_name || null,
+      row.message_type,
+      row.recipient || null,
+      row.message_content || null,
+      formatMySQLDate(row.sent_at || new Date())
     ]);
   });
 

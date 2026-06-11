@@ -562,7 +562,7 @@ export function Tickets() {
 
       console.log("Sending ticket creation payload to API:", apiPayload);
 
-      const res = await fetch("/api/tickets", {
+      const res = await fetch("/api/tickets/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(apiPayload)
@@ -605,6 +605,17 @@ export function Tickets() {
         { action: `Status updated to ${newStatus}`, timestamp: new Date().toISOString(), user: profile?.name || user?.email }
       ]
     });
+
+    // Sync to MySQL via REST API
+    try {
+      await fetch(`/api/tickets/${ticketId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      });
+    } catch (e) {
+      console.error("Failed to sync status update to API:", e);
+    }
 
     // Dispatch real-time notification
     try {
@@ -650,6 +661,17 @@ export function Tickets() {
         { action: `Assigned to ${agent?.name || "None"}`, timestamp: new Date().toISOString(), user: profile?.name || user?.email }
       ]
     });
+
+    // Sync to MySQL via REST API
+    try {
+      await fetch(`/api/tickets/${ticketId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignedTo: agentId, assignedToName: agent?.name || "", status: newStatus })
+      });
+    } catch (e) {
+      console.error("Failed to sync assignment update to API:", e);
+    }
 
     // Dispatch real-time notification
     try {
@@ -831,6 +853,24 @@ export function Tickets() {
                   p.includes("Moderate") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
                     "bg-blue-500/10 text-blue-500 border border-blue-500/20";
 
+              const createdTime = ticket.createdAt?.seconds 
+                ? new Date(ticket.createdAt.seconds * 1000) 
+                : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
+
+              const fallbackResponseDeadline = ticket.responseDeadline || 
+                (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
+                  businessHours: ticket.businessHours,
+                  excludeWeekends: ticket.excludeWeekends,
+                  excludeHolidays: ticket.excludeHolidays
+                }).toISOString() : undefined);
+
+              const fallbackResolutionDeadline = ticket.resolutionDeadline || 
+                (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
+                  businessHours: ticket.businessHours,
+                  excludeWeekends: ticket.excludeWeekends,
+                  excludeHolidays: ticket.excludeHolidays
+                }).toISOString() : undefined);
+
               return (
                 <div key={ticket.id} className={cn("glass-panel rounded-2xl p-5 flex flex-col justify-between border border-border/80 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-blue-500/30 group", priorityClass)}>
                   <div>
@@ -865,7 +905,7 @@ export function Tickets() {
                       <div className="flex flex-col gap-1 w-full bg-muted/20 dark:bg-black/15 p-2 rounded-xl border border-border/30 dark:border-white/5">
                         <SLATimer
                           label="Resp"
-                          deadline={ticket.responseDeadline}
+                          deadline={fallbackResponseDeadline}
                           startTime={ticket.responseSlaStartTime || ticket.createdAt}
                           metAt={ticket.firstResponseAt}
                           isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
@@ -874,7 +914,7 @@ export function Tickets() {
                         />
                         <SLATimer
                           label="Res"
-                          deadline={ticket.resolutionDeadline}
+                          deadline={fallbackResolutionDeadline}
                           startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
                           metAt={ticket.resolvedAt}
                           isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
@@ -945,7 +985,26 @@ export function Tickets() {
                   const priorityBadge = p.includes("Critical") ? "bg-red-500/10 text-red-500 border border-red-500/20" :
                     p.includes("High") ? "bg-orange-500/10 text-orange-500 border border-orange-500/20" :
                       p.includes("Moderate") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
-                        "bg-blue-500/10 text-blue-500 border border-blue-500/20";
+                        "bg-blue-50 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30";
+
+                  const createdTime = ticket.createdAt?.seconds 
+                    ? new Date(ticket.createdAt.seconds * 1000) 
+                    : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
+
+                  const fallbackResponseDeadline = ticket.responseDeadline || 
+                    (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
+                      businessHours: ticket.businessHours,
+                      excludeWeekends: ticket.excludeWeekends,
+                      excludeHolidays: ticket.excludeHolidays
+                    }).toISOString() : undefined);
+
+                  const fallbackResolutionDeadline = ticket.resolutionDeadline || 
+                    (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
+                      businessHours: ticket.businessHours,
+                      excludeWeekends: ticket.excludeWeekends,
+                      excludeHolidays: ticket.excludeHolidays
+                    }).toISOString() : undefined);
+
                   return (
                     <tr key={ticket.id} className="hover:bg-blue-500/5 transition-colors font-outfit">
                       <td className="p-3">
@@ -970,7 +1029,7 @@ export function Tickets() {
                         <div className="flex flex-col gap-1 bg-black/10 p-1.5 rounded-lg border border-white/5">
                           <SLATimer
                             label="Resp"
-                            deadline={ticket.responseDeadline}
+                            deadline={fallbackResponseDeadline}
                             startTime={ticket.responseSlaStartTime || ticket.createdAt}
                             metAt={ticket.firstResponseAt}
                             isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
@@ -979,7 +1038,7 @@ export function Tickets() {
                           />
                           <SLATimer
                             label="Res"
-                            deadline={ticket.resolutionDeadline}
+                            deadline={fallbackResolutionDeadline}
                             startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
                             metAt={ticket.resolvedAt}
                             isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}

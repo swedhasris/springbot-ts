@@ -21,18 +21,21 @@ export class NotificationEngine {
    */
   static async notifyAdmins(title: string, message: string, ticketId: string) {
     try {
-      // Get all admins
-      // Since we don't have a direct 'users' table access here easily without more queries, 
-      // we can use a role-based check if the DB structure allows.
-      // For now, let's assume we can notify a specific 'admin' user or use a broadcast approach.
-      // In this system, 'admin' and 'agent' are roles.
-      
-      // Let's create a notification for everyone with admin/agent role
-      // This is a bit expensive, but for a small system it's okay.
-      // Alternatively, we can use a 'system' or 'broadcast' flag if we had it.
-      
-      // For now, let's just use a hardcoded admin ID or find them
-      // In server.ts, we can do this more easily.
-    } catch (error) {}
+      // Query all admin and agent users from the database
+      const { query: dbQuery } = await import("./db");
+      const admins = await dbQuery(
+        "SELECT uid FROM users WHERE role IN ('admin', 'super_admin', 'ultra_super_admin', 'agent') AND is_active = 1"
+      );
+
+      // Create a notification for each admin/agent user
+      for (const admin of admins) {
+        if (admin.uid) {
+          await this.create(admin.uid, title, message, "admin_alert", ticketId);
+        }
+      }
+      console.log(`[Notification] Notified ${admins.length} admins for ticket ${ticketId}`);
+    } catch (error: any) {
+      console.error("[Notification] Error notifying admins:", error.message);
+    }
   }
 }

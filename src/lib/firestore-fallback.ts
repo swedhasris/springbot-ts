@@ -148,6 +148,7 @@ function mapDbTicketToFrontend(t: any): any {
     id: String(t.id || t.ticket_number || ""),
     number: t.ticket_number || t.number || "",
     caller: t.caller || "",
+    callerEmail: t.caller_email || t.callerEmail || "",
     category: t.category || "",
     incidentCategory: t.incident_category || t.incidentCategory || "",
     incident_category: t.incident_category || t.incidentCategory || "",
