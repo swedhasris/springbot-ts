@@ -511,3 +511,20 @@ CREATE TABLE IF NOT EXISTS ticket_email_activities (
     FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
     INDEX idx_ticket_id (ticket_id)
 ) ENGINE=InnoDB;
+
+-- ============================================================
+-- COMPANY FEATURE PERMISSIONS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS company_feature_permissions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    company_id VARCHAR(128) NOT NULL,
+    feature_id VARCHAR(128) NOT NULL,
+    can_view BOOLEAN DEFAULT TRUE,
+    can_use BOOLEAN DEFAULT TRUE,
+    can_edit BOOLEAN DEFAULT TRUE,
+    is_mandatory BOOLEAN DEFAULT FALSE,
+    status VARCHAR(50) DEFAULT 'enabled',
+    updated_by VARCHAR(128) NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_company_feature (company_id, feature_id)
+) ENGINE=InnoDB;

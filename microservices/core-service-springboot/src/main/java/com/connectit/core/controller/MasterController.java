@@ -10,6 +10,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -21,6 +23,8 @@ import java.util.*;
 @RequestMapping("/api")
 @RequiredArgsConstructor
 public class MasterController {
+
+    private static final Logger log = LoggerFactory.getLogger(MasterController.class);
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -211,8 +215,11 @@ public class MasterController {
 
     // ── Feature Permissions API ───────────────────────────────────────────────
     @GetMapping("/feature-permissions")
-    public ResponseEntity<?> getFeaturePermissions(@RequestParam String company_id) {
+    public ResponseEntity<?> getFeaturePermissions(@RequestParam(required = false) String company_id) {
         try {
+            if (company_id == null || company_id.trim().isEmpty() || "undefined".equals(company_id) || "null".equals(company_id)) {
+                return ResponseEntity.ok(new ArrayList<>());
+            }
             List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT * FROM company_feature_permissions WHERE company_id = ?", company_id);
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> r : rows) {
@@ -223,11 +230,13 @@ public class MasterController {
                 m.put("canUse", parseBoolean(r.get("can_use")));
                 m.put("canEdit", parseBoolean(r.get("can_edit")));
                 m.put("isMandatory", parseBoolean(r.get("is_mandatory")));
+                m.put("status", r.get("status") != null ? r.get("status") : "enabled");
                 result.add(m);
             }
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            log.error("Error retrieving company feature permissions: {}", e.getMessage(), e);
+            return ResponseEntity.ok(new ArrayList<>()); // Fallback: return HTTP 200 and [] instead of 500
         }
     }
 
@@ -241,6 +250,7 @@ public class MasterController {
             boolean canUse = parseBoolean(body.get("canUse"));
             boolean canEdit = parseBoolean(body.get("canEdit"));
             boolean isMandatory = parseBoolean(body.get("isMandatory"));
+            String status = (String) body.get("status");
 
             if (companyId == null || featureId == null) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Missing required fields"));
@@ -252,17 +262,18 @@ public class MasterController {
 
             if (!existing.isEmpty()) {
                 jdbcTemplate.update(
-                    "UPDATE company_feature_permissions SET can_view=?, can_use=?, can_edit=?, is_mandatory=?, updated_at=CURRENT_TIMESTAMP WHERE company_id=? AND feature_id=?",
-                    canView ? 1 : 0, canUse ? 1 : 0, canEdit ? 1 : 0, isMandatory ? 1 : 0, companyId, featureId
+                    "UPDATE company_feature_permissions SET can_view=?, can_use=?, can_edit=?, is_mandatory=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE company_id=? AND feature_id=?",
+                    canView ? 1 : 0, canUse ? 1 : 0, canEdit ? 1 : 0, isMandatory ? 1 : 0, status != null ? status : "enabled", companyId, featureId
                 );
             } else {
                 jdbcTemplate.update(
-                    "INSERT INTO company_feature_permissions (company_id, feature_id, can_view, can_use, can_edit, is_mandatory) VALUES (?, ?, ?, ?, ?, ?)",
-                    companyId, featureId, canView ? 1 : 0, canUse ? 1 : 0, canEdit ? 1 : 0, isMandatory ? 1 : 0
+                    "INSERT INTO company_feature_permissions (company_id, feature_id, can_view, can_use, can_edit, is_mandatory, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    companyId, featureId, canView ? 1 : 0, canUse ? 1 : 0, canEdit ? 1 : 0, isMandatory ? 1 : 0, status != null ? status : "enabled"
                 );
             }
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
+            log.error("Error saving company feature permissions: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
