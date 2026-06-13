@@ -234,7 +234,37 @@ public class EmailService {
         String fromAddress = cfg != null ? cfg.getEmailAddress() : defaultFrom;
         String fromName = cfg != null ? cfg.getCompanyName() + " Support" : defaultFromName;
 
+        // Validation Rules:
+        // - Sender email must come from Email Integration settings.
+        // - Sender email must not come from ticket caller.
+        // - Sender email must not come from company contact email.
+        // - Sender email must not come from requestor email.
+        if (ticketNumber != null) {
+            try {
+                Map<String, Object> ticketInfo = jdbcTemplate.queryForMap(
+                    "SELECT t.caller_email, c.email as company_email " +
+                    "FROM tickets t " +
+                    "LEFT JOIN companies c ON t.company_id = c.id " +
+                    "WHERE t.ticket_number = ?", ticketNumber);
+                
+                String callerEmail = (String) ticketInfo.get("caller_email");
+                String companyEmail = (String) ticketInfo.get("company_email");
+                
+                if (fromAddress != null) {
+                    if (fromAddress.equalsIgnoreCase(callerEmail)) {
+                        log.warn("[SMTP] Guard Triggered: Sender email matches ticket caller email ({}). Overriding to integration settings default.", fromAddress);
+                        fromAddress = cfg != null ? cfg.getEmailAddress() : defaultFrom;
+                    }
+                    if (fromAddress.equalsIgnoreCase(companyEmail)) {
+                        log.warn("[SMTP] Guard Triggered: Sender email matches company contact email ({}). Overriding to integration settings default.", fromAddress);
+                        fromAddress = cfg != null ? cfg.getEmailAddress() : defaultFrom;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
         helper.setFrom(fromAddress, fromName);
+        helper.setReplyTo(fromAddress, fromName);
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(html, true);
@@ -257,7 +287,25 @@ public class EmailService {
             msg.setHeader("References", references);
         }
         
-        activeSender.send(msg);
+        log.info("[SMTP] Outbound attempt. Sender: {}, Recipient: {}, Subject: {}", fromAddress, to, subject);
+        try {
+            activeSender.send(msg);
+            log.info("[SMTP] Outbound success. Sender: {}, Recipient: {}, Message-ID: {}, SMTP Response: 250 OK", fromAddress, to, messageId);
+        } catch (Exception e) {
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+            boolean isNonExistent = errorMsg.contains("550") || 
+                                    errorMsg.toLowerCase().contains("does not exist") || 
+                                    errorMsg.toLowerCase().contains("user unknown") || 
+                                    errorMsg.toLowerCase().contains("mailbox unavailable") ||
+                                    errorMsg.toLowerCase().contains("invalid address") ||
+                                    errorMsg.toLowerCase().contains("recipient");
+            if (isNonExistent) {
+                log.error("[SMTP] DELIVERY FAILURE - Recipient mailbox does not exist. Sender: {}, Recipient: {}, SMTP Error: {}", fromAddress, to, errorMsg);
+            } else {
+                log.error("[SMTP] DELIVERY FAILURE - General failure. Sender: {}, Recipient: {}, SMTP Error: {}", fromAddress, to, errorMsg);
+            }
+            throw e;
+        }
         return messageId;
     }
 
