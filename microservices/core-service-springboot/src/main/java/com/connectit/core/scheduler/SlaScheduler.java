@@ -38,31 +38,39 @@ public class SlaScheduler {
         List<Ticket> tickets = ticketRepo.findAllNonClosed();
 
         for (Ticket t : tickets) {
+            // Safety guard: skip any resolved/closed/canceled tickets
+            if (List.of("Resolved","Closed","Canceled").contains(t.getStatus())) continue;
             if (List.of("On Hold","Waiting for Customer").contains(t.getStatus())) continue;
 
             boolean changed = false;
 
             // Response SLA
-            if (t.getResponseDeadline() != null && t.getFirstResponseAt() == null
+            if (t.getResponseDeadline() != null
                 && !"Breached".equals(t.getResponseSlaStatus())
                 && !"Completed".equals(t.getResponseSlaStatus())) {
 
-                long deadline  = toEpoch(t.getResponseDeadline());
-                long createdAt = toEpoch(t.getCreatedAt());
-                long diff      = deadline - now.toEpochSecond(java.time.ZoneOffset.UTC) * 1000;
-                long totalWin  = deadline - createdAt;
+                // If first response already given, mark Completed and move on
+                if (t.getFirstResponseAt() != null) {
+                    t.setResponseSlaStatus("Completed");
+                    changed = true;
+                } else {
+                    long deadline  = toEpoch(t.getResponseDeadline());
+                    long createdAt = toEpoch(t.getCreatedAt());
+                    long diff      = deadline - now.toEpochSecond(java.time.ZoneOffset.UTC) * 1000;
+                    long totalWin  = deadline - createdAt;
 
-                if (diff <= 0) {
-                    t.setResponseSlaStatus("Breached");
-                    changed = true;
-                    log("sla_triggered","Response SLA BREACHED", t);
-                    emailService.notifySlaBreached(t, "Response");
-                    recordBreach(t, "Response SLA");
-                } else if (totalWin > 0 && diff < totalWin * 0.2 && !"At Risk".equals(t.getResponseSlaStatus())) {
-                    t.setResponseSlaStatus("At Risk");
-                    changed = true;
-                    int pct = (int) Math.round(((double)(totalWin - diff) / totalWin) * 100);
-                    emailService.notifySlaWarning(t, pct, "Response");
+                    if (diff <= 0) {
+                        t.setResponseSlaStatus("Breached");
+                        changed = true;
+                        log("sla_triggered","Response SLA BREACHED", t);
+                        emailService.notifySlaBreached(t, "Response");
+                        recordBreach(t, "Response SLA");
+                    } else if (totalWin > 0 && diff < totalWin * 0.2 && !"At Risk".equals(t.getResponseSlaStatus())) {
+                        t.setResponseSlaStatus("At Risk");
+                        changed = true;
+                        int pct = (int) Math.round(((double)(totalWin - diff) / totalWin) * 100);
+                        emailService.notifySlaWarning(t, pct, "Response");
+                    }
                 }
             }
 
@@ -103,6 +111,7 @@ public class SlaScheduler {
         LocalDateTime now = LocalDateTime.now();
         // Additional monitoring logic beyond the 15-minute escalation
         ticketRepo.findAllNonClosed().stream()
+            .filter(t -> !List.of("Resolved","Closed","Canceled").contains(t.getStatus()))
             .filter(t -> t.getResolutionDeadline() != null && now.isAfter(t.getResolutionDeadline())
                 && !"Breached".equals(t.getResolutionSlaStatus()))
             .forEach(t -> {

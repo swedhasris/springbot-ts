@@ -10,6 +10,8 @@ import java.util.List;
 public interface EmailLogRepository extends JpaRepository<EmailLog, Long> {
     List<EmailLog> findByTicketIdOrderByCreatedAtDesc(Long ticketId);
     List<EmailLog> findAllByOrderByCreatedAtDesc(Pageable p);
+    List<EmailLog> findByMessageId(String messageId);
+    boolean existsByMessageId(String messageId);
     @Query("SELECT COUNT(e) FROM EmailLog e WHERE e.direction='outbound' AND e.sentAt >= :since")
     long countSentSince(LocalDateTime since);
     @Query("SELECT COUNT(e) FROM EmailLog e WHERE e.direction='inbound' AND e.receivedAt >= :since")

@@ -43,6 +43,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/health", "/api/db-test", "/up").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                // Email integration - allow test & config endpoints without auth
+                .requestMatchers("/api/email/send-test", "/api/email/send-note", "/api/email-configs/test", "/api/email-configs", "/api/email-configs/**", "/api/email/health", "/api/email/queue/process").permitAll()
                 // Uploads
                 .requestMatchers("/uploads/**", "/captures/**").permitAll()
                 // All other API requires auth

@@ -17,6 +17,8 @@ public class TicketService {
     private final TicketActivityRepository activityRepo;
     private final NotificationRepository notifRepo;
     private final UserRepository userRepo;
+    private final EmailLogRepository emailLogRepo;
+    private final EmailService emailService;
 
     private static final Map<String,Integer> RESPONSE_HOURS = Map.of(
         "1 - Critical",2, "2 - High",4, "3 - Moderate",8, "4 - Low",24
@@ -121,6 +123,13 @@ public class TicketService {
 
         if (List.of("Resolved","Closed").contains(newStatus) && t.getResolvedAt() == null) {
             t.setResolvedAt(LocalDateTime.now());
+            // Auto-complete SLA timers so the scheduler stops monitoring this ticket
+            if (!"Breached".equals(t.getResponseSlaStatus())) {
+                t.setResponseSlaStatus("Completed");
+            }
+            if (!"Breached".equals(t.getResolutionSlaStatus())) {
+                t.setResolutionSlaStatus("Completed");
+            }
         }
 
         t = ticketRepo.save(t);
@@ -179,8 +188,66 @@ public class TicketService {
             .metadataJson(data.get("metadata_json") != null ? data.get("metadata_json").toString() : null)
             .build();
 
-        // Update ticket timestamp
-        ticketRepo.findById(ticketId).ifPresent(t -> { t.setUpdatedAt(LocalDateTime.now()); ticketRepo.save(t); });
+        // Update ticket timestamp + auto-complete Response SLA on first public comment
+        ticketRepo.findById(ticketId).ifPresent(t -> {
+            t.setUpdatedAt(LocalDateTime.now());
+
+            // If this is the FIRST public comment/response, mark Response SLA as Completed
+            boolean isPublicReply = "public".equals(visType)
+                && ("comment".equals(actType) || "work_note".equals(actType));
+            if (isPublicReply && t.getFirstResponseAt() == null
+                && !List.of("Resolved","Closed","Canceled").contains(t.getStatus())) {
+                t.setFirstResponseAt(LocalDateTime.now());
+                if (!"Breached".equals(t.getResponseSlaStatus())) {
+                    t.setResponseSlaStatus("Completed");
+                }
+            }
+
+            ticketRepo.save(t);
+
+            // Queue outbound email if public comment from portal/API (not inbound email itself)
+            if ("public".equals(visType) && "comment".equals(actType) && !"email".equalsIgnoreCase(a.getChannel())) {
+                String recipient = t.getCallerEmail() != null ? t.getCallerEmail() : (t.getCaller() != null && t.getCaller().contains("@") ? t.getCaller() : null);
+                if (recipient != null) {
+                    String creatorEmail = a.getCreatedBy();
+                    if (creatorEmail != null && !creatorEmail.contains("@")) {
+                        creatorEmail = userRepo.findByUid(creatorEmail)
+                            .map(User::getEmail)
+                            .orElse(creatorEmail);
+                    }
+                    if (!recipient.equalsIgnoreCase(creatorEmail)) {
+                        List<EmailLog> logs = emailLogRepo.findByTicketIdOrderByCreatedAtDesc(ticketId);
+                        String inReplyTo = null;
+                        String references = null;
+                        if (!logs.isEmpty()) {
+                            EmailLog lastLog = logs.get(0);
+                            inReplyTo = lastLog.getMessageId();
+                            references = (lastLog.getReferencesHeader() != null ? lastLog.getReferencesHeader() + " " : "") +
+                                         (lastLog.getMessageId() != null ? lastLog.getMessageId() : "");
+                            references = references.trim();
+                        }
+
+                        String subject = "Re: [" + t.getTicketNumber() + "] " + t.getTitle();
+                        String emailBody = emailService.buildTemplate("New Comment Added", t.getTicketNumber(),
+                            "<p>A new comment has been added to your ticket by <strong>" + a.getCreatedByName() + "</strong>:</p>" +
+                            "<div style='padding:12px;background:#f8fafc;border-left:4px solid #1e293b;margin:16px 0;white-space:pre-wrap;'>" +
+                            a.getMessage() + "</div>", t.getTicketNumber());
+
+                        String metaJson = null;
+                        if ((inReplyTo != null && !inReplyTo.isBlank()) || (references != null && !references.isBlank())) {
+                            try {
+                                Map<String, String> metaMap = new HashMap<>();
+                                if (inReplyTo != null && !inReplyTo.isBlank()) metaMap.put("inReplyTo", inReplyTo);
+                                if (references != null && !references.isBlank()) metaMap.put("references", references);
+                                metaJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(metaMap);
+                            } catch (Exception ignored) {}
+                        }
+                        emailService.enqueue("ticket_comment", t.getId(), t.getTicketNumber(), recipient, subject, emailBody, metaJson);
+                    }
+                }
+            }
+        });
+
         return activityRepo.save(a);
     }
 

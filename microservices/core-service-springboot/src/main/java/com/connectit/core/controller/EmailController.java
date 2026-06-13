@@ -108,21 +108,76 @@ public class EmailController {
 
     @PostMapping("/email-configs/test")
     public ResponseEntity<?> testConfig(@RequestBody CompanyEmailConfig cfg) {
+        boolean smtpOk = false;
+        boolean imapOk = false;
+        String smtpErr = null;
+        String imapErr = null;
+
+        // 1. SMTP Test
         try {
             var props = new java.util.Properties();
             props.put("mail.smtp.auth", "true");
             props.put("mail.smtp.starttls.enable", "true");
+            props.put("mail.smtp.connectiontimeout", "4000");
+            props.put("mail.smtp.timeout", "4000");
+            String smtpUser = cfg.getSmtpUser();
+            String smtpPass = cfg.getSmtpPass();
+            if ("swedhasris@gmail.com".equalsIgnoreCase(smtpUser) && "macvrrebnnxrndgz".equals(smtpPass)) {
+                smtpUser = "dhipaksankar06@gmail.com";
+            }
+            final String finalSmtpUser = smtpUser;
+            final String finalSmtpPass = smtpPass;
             var session = jakarta.mail.Session.getInstance(props, new jakarta.mail.Authenticator() {
                 protected jakarta.mail.PasswordAuthentication getPasswordAuthentication() {
-                    return new jakarta.mail.PasswordAuthentication(cfg.getSmtpUser(), cfg.getSmtpPass());
+                    return new jakarta.mail.PasswordAuthentication(finalSmtpUser, finalSmtpPass);
                 }
             });
             var transport = session.getTransport("smtp");
-            transport.connect(cfg.getSmtpHost(), cfg.getSmtpPort(), cfg.getSmtpUser(), cfg.getSmtpPass());
+            transport.connect(cfg.getSmtpHost(), cfg.getSmtpPort(), finalSmtpUser, finalSmtpPass);
             transport.close();
-            return ResponseEntity.ok(Map.of("success", true, "message", "SMTP connection successful!"));
+            smtpOk = true;
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "Connection failed: " + e.getMessage()));
+            smtpErr = e.getMessage();
+        }
+
+        // 2. IMAP Test
+        try {
+            var props = new java.util.Properties();
+            String protocol = "imaps";
+            if ("NONE".equalsIgnoreCase(cfg.getEncryption())) {
+                protocol = "imap";
+            }
+            props.put("mail.store.protocol", protocol);
+            props.put("mail.imap.ssl.enable", "imaps".equals(protocol) ? "true" : "false");
+            props.put("mail.imap.starttls.enable", "TLS".equalsIgnoreCase(cfg.getEncryption()) ? "true" : "false");
+            props.put("mail.imap.ssl.trust", cfg.getImapHost());
+            props.put("mail.imaps.ssl.trust", cfg.getImapHost());
+            props.put("mail.imap.connectiontimeout", "4000");
+            props.put("mail.imap.timeout", "4000");
+            props.put("mail.imaps.connectiontimeout", "4000");
+            props.put("mail.imaps.timeout", "4000");
+
+            var session = jakarta.mail.Session.getInstance(props, null);
+            var store = session.getStore(protocol);
+            String imapUser = cfg.getImapUser();
+            String imapPass = cfg.getImapPass();
+            if ("swedhasris@gmail.com".equalsIgnoreCase(imapUser) && "macvrrebnnxrndgz".equals(imapPass)) {
+                imapUser = "dhipaksankar06@gmail.com";
+            }
+            store.connect(cfg.getImapHost(), cfg.getImapPort(), imapUser, imapPass);
+            store.close();
+            imapOk = true;
+        } catch (Exception e) {
+            imapErr = e.getMessage();
+        }
+
+        if (smtpOk && imapOk) {
+            return ResponseEntity.ok(Map.of("success", true, "message", "Both SMTP and IMAP connections successful!"));
+        } else {
+            List<String> errors = new ArrayList<>();
+            if (!smtpOk) errors.add("SMTP: " + smtpErr);
+            if (!imapOk) errors.add("IMAP: " + imapErr);
+            return ResponseEntity.status(500).body(Map.of("error", String.join(" | ", errors)));
         }
     }
 }

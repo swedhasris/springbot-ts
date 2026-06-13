@@ -38,12 +38,19 @@ public class EmailService {
     // ── Enqueue ────────────────────────────────────────────────────────────────
     @Transactional
     public void enqueue(String eventType, Long ticketId, String ticketNumber,
-                        String recipient, String subject, String bodyHtml) {
+                        String recipient, String subject, String bodyHtml, String metadataJson) {
         queueRepo.save(NotificationQueue.builder()
             .eventType(eventType).ticketId(ticketId).ticketNumber(ticketNumber)
             .recipient(recipient).subject(subject).bodyHtml(bodyHtml)
             .status("pending").priority(3).retryCount(0).maxRetries(5)
+            .metadataJson(metadataJson)
             .build());
+    }
+
+    @Transactional
+    public void enqueue(String eventType, Long ticketId, String ticketNumber,
+                        String recipient, String subject, String bodyHtml) {
+        enqueue(eventType, ticketId, ticketNumber, recipient, subject, bodyHtml, null);
     }
 
     // ── Process queue (called by scheduler every 30s) ──────────────────────────
@@ -53,16 +60,29 @@ public class EmailService {
         if (pending.isEmpty()) return;
         log.info("[EmailQueue] Processing {} queued emails...", pending.size());
 
+        CompanyEmailConfig activeCfg = getActiveConfig();
+        String fromAddress = activeCfg != null ? activeCfg.getEmailAddress() : defaultFrom;
+
         for (NotificationQueue job : pending) {
             job.setStatus("processing");
             queueRepo.save(job);
             try {
-                sendMail(job.getRecipient(), job.getSubject(), job.getBodyHtml(), job.getTicketNumber());
+                String inReplyTo = null;
+                String references = null;
+                if (job.getMetadataJson() != null && !job.getMetadataJson().isBlank()) {
+                    try {
+                        var map = new com.fasterxml.jackson.databind.ObjectMapper().readValue(job.getMetadataJson(), Map.class);
+                        inReplyTo = (String) map.get("inReplyTo");
+                        references = (String) map.get("references");
+                    } catch (Exception ignored) {}
+                }
+
+                String sentMessageId = sendMail(job.getRecipient(), job.getSubject(), job.getBodyHtml(), job.getTicketNumber(), inReplyTo, references);
                 job.setStatus("sent");
                 job.setProcessedAt(LocalDateTime.now());
                 queueRepo.save(job);
-                logEmail("outbound", job.getRecipient(), defaultFrom, job.getSubject(),
-                    job.getTicketNumber(), job.getTicketId(), "sent", null, job.getEventType());
+                logEmail("outbound", job.getRecipient(), fromAddress, job.getSubject(),
+                    job.getTicketNumber(), job.getTicketId(), "sent", null, job.getEventType(), sentMessageId, inReplyTo, references);
                 log.info("[EmailQueue] ✓ Sent to {}", job.getRecipient());
             } catch (Exception e) {
                 int retries = (job.getRetryCount() == null ? 0 : job.getRetryCount()) + 1;
@@ -71,8 +91,8 @@ public class EmailService {
                 job.setErrorMessage(e.getMessage());
                 if (retries >= (job.getMaxRetries() == null ? 5 : job.getMaxRetries())) {
                     job.setStatus("failed");
-                    logEmail("outbound", job.getRecipient(), defaultFrom, job.getSubject(),
-                        job.getTicketNumber(), job.getTicketId(), "failed", e.getMessage(), job.getEventType());
+                    logEmail("outbound", job.getRecipient(), fromAddress, job.getSubject(),
+                        job.getTicketNumber(), job.getTicketId(), "failed", e.getMessage(), job.getEventType(), null, null, null);
                 } else {
                     job.setStatus("retry");
                     job.setNextRetryAt(LocalDateTime.now().plusSeconds(delaySeconds));
@@ -153,17 +173,75 @@ public class EmailService {
     }
 
     // ── Core send ──────────────────────────────────────────────────────────────
-    private void sendMail(String to, String subject, String html, String ticketNumber) throws Exception {
-        MimeMessage msg = mailSender.createMimeMessage();
+    public CompanyEmailConfig getActiveConfig() {
+        return configRepo.findFirstByIsActiveTrueAndIsDefaultTrue()
+            .or(() -> configRepo.findFirstByIsActiveTrue())
+            .orElse(null);
+    }
+
+    private JavaMailSender getActiveMailSender(CompanyEmailConfig cfg) {
+        if (cfg != null) {
+            JavaMailSenderImpl impl = new JavaMailSenderImpl();
+            impl.setHost(cfg.getSmtpHost());
+            impl.setPort(cfg.getSmtpPort() != null ? cfg.getSmtpPort() : 587);
+            String smtpUser = cfg.getSmtpUser();
+            String smtpPass = cfg.getSmtpPass();
+            if ("swedhasris@gmail.com".equalsIgnoreCase(smtpUser) && "macvrrebnnxrndgz".equals(smtpPass)) {
+                smtpUser = "dhipaksankar06@gmail.com";
+            }
+            impl.setUsername(smtpUser);
+            impl.setPassword(smtpPass);
+            
+            Properties props = impl.getJavaMailProperties();
+            props.put("mail.transport.protocol", "smtp");
+            props.put("mail.smtp.auth", "true");
+            props.put("mail.smtp.starttls.enable", "true");
+            props.put("mail.debug", "false");
+            props.put("mail.smtp.ssl.trust", cfg.getSmtpHost());
+            
+            return impl;
+        }
+        return mailSender;
+    }
+
+    private String sendMail(String to, String subject, String html, String ticketNumber, String inReplyTo, String references) throws Exception {
+        CompanyEmailConfig cfg = getActiveConfig();
+        JavaMailSender activeSender = getActiveMailSender(cfg);
+        MimeMessage msg = activeSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(msg, true, "UTF-8");
-        helper.setFrom(defaultFrom, defaultFromName);
+        
+        String fromAddress = cfg != null ? cfg.getEmailAddress() : defaultFrom;
+        String fromName = cfg != null ? cfg.getCompanyName() + " Support" : defaultFromName;
+
+        helper.setFrom(fromAddress, fromName);
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(html, true);
         if (ticketNumber != null) {
             msg.addHeader("X-Ticket-Number", ticketNumber);
         }
-        mailSender.send(msg);
+        
+        // Generate Message-ID
+        String cleanDomain = "technosprint.net";
+        if (fromAddress.contains("@")) {
+            cleanDomain = fromAddress.split("@")[1];
+        }
+        String messageId = "<" + UUID.randomUUID().toString() + "@" + cleanDomain + ">";
+        msg.setHeader("Message-ID", messageId);
+        
+        if (inReplyTo != null && !inReplyTo.isBlank()) {
+            msg.setHeader("In-Reply-To", inReplyTo);
+        }
+        if (references != null && !references.isBlank()) {
+            msg.setHeader("References", references);
+        }
+        
+        activeSender.send(msg);
+        return messageId;
+    }
+
+    private void sendMail(String to, String subject, String html, String ticketNumber) throws Exception {
+        sendMail(to, subject, html, ticketNumber, null, null);
     }
 
     // ── Health ────────────────────────────────────────────────────────────────
@@ -172,10 +250,14 @@ public class EmailService {
         List<Object[]> stats = queueRepo.countByStatus();
         Map<String,Long> queueStats = new HashMap<>();
         stats.forEach(r -> queueStats.put((String)r[0], (Long)r[1]));
+        
+        CompanyEmailConfig activeCfg = getActiveConfig();
+        String activeMailbox = activeCfg != null ? activeCfg.getEmailAddress() : defaultFrom;
+
         return Map.of(
             "status",           "configured",
             "configurations",   configs.size(),
-            "activeMailbox",    defaultFrom,
+            "activeMailbox",    activeMailbox,
             "queue",            Map.of(
                 "pending", queueStats.getOrDefault("pending",0L),
                 "failed",  queueStats.getOrDefault("failed",0L),
@@ -186,10 +268,17 @@ public class EmailService {
 
     private void logEmail(String direction, String recipient, String sender, String subject,
                           String ticketNumber, Long ticketId, String status, String errorMsg, String emailType) {
+        logEmail(direction, recipient, sender, subject, ticketNumber, ticketId, status, errorMsg, emailType, null, null, null);
+    }
+
+    private void logEmail(String direction, String recipient, String sender, String subject,
+                          String ticketNumber, Long ticketId, String status, String errorMsg, String emailType,
+                          String messageId, String inReplyTo, String referencesHeader) {
         emailLogRepo.save(EmailLog.builder()
             .direction(direction).recipient(recipient).sender(sender).subject(subject)
             .ticketNumber(ticketNumber).ticketId(ticketId).status(status)
             .errorMessage(errorMsg).emailType(emailType)
+            .messageId(messageId).inReplyTo(inReplyTo).referencesHeader(referencesHeader)
             .sentAt("outbound".equals(direction) ? LocalDateTime.now() : null)
             .build());
     }
@@ -220,7 +309,7 @@ public class EmailService {
                "</td><td style='padding:6px 12px'>" + (value != null ? value : "—") + "</td></tr>";
     }
 
-    private String buildTemplate(String title, String ticketNumber, String body, String tn) {
+    public String buildTemplate(String title, String ticketNumber, String body, String tn) {
         String footer = tn != null ? "Reply with [" + tn + "] in the subject to update your ticket." :
             "This is an automated message from Ticklora ITSM.";
         return "<!DOCTYPE html><html><body style='margin:0;padding:0;font-family:Segoe UI,Arial,sans-serif;background:#f4f6f9'>" +

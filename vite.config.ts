@@ -20,6 +20,10 @@ export default defineConfig(({mode}) => {
         '@firebase/firestore': path.resolve(__dirname, './src/lib/firestore-fallback.ts'),
       },
     },
+    build: {
+      outDir: './microservices/core-service-springboot/src/main/resources/static',
+      emptyOutDir: true,
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify

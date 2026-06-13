@@ -22,6 +22,7 @@ public class EmailLog {
     @Column(name = "body_preview", columnDefinition = "TEXT") private String bodyPreview;
     @Column(name = "message_id")            private String messageId;
     @Column(name = "in_reply_to")           private String inReplyTo;
+    @Column(name = "references_header", columnDefinition = "TEXT") private String referencesHeader;
     @Column(nullable = false, length = 30)  private String status = "pending";
     @Column(name = "error_message", columnDefinition = "TEXT") private String errorMessage;
     @Column(name = "email_type", length = 50) private String emailType = "notification";

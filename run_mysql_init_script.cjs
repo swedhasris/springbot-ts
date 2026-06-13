@@ -1,16 +1,17 @@
+require('dotenv').config();
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
 
 async function run() {
-  console.log('Connecting to MySQL on port 3307...');
+  console.log('Connecting to MySQL on port 3306...');
   let connection;
   try {
     connection = await mysql.createConnection({
-      host: 'localhost',
-      port: 3307,
-      user: 'root',
-      password: '',
+      host: process.env.MYSQL_HOST || 'localhost',
+      port: parseInt(process.env.MYSQL_PORT) || 3306,
+      user: process.env.MYSQL_USER || 'root',
+      password: process.env.MYSQL_PASSWORD || '',
       multipleStatements: true
     });
     console.log('Connected! Dropping connectit_db if exists...');

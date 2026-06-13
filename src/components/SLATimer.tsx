@@ -58,7 +58,7 @@ export function SLATimer({
       timerRef.current = null;
     }
 
-    // SLA already met — freeze the display
+    // ── CASE 1: SLA already met — freeze display as COMPLETED ──────────────────
     if (metAt) {
       const metMs = toMs(metAt);
       if (!isNaN(metMs)) {
@@ -70,7 +70,9 @@ export function SLATimer({
       }
     }
 
-    // Resolution SLA: waiting for first response before starting
+    // ── CASE 2: Resolution SLA — waiting for first response ────────────────────
+    // waitUntil === null  → first response not yet given, show PENDING
+    // waitUntil === undefined → no wait required (Response SLA), start immediately
     if (waitUntil !== undefined && (waitUntil === null || waitUntil === "")) {
       setStatus("waiting");
       setDisplayTime("-- : -- : --");
@@ -80,56 +82,81 @@ export function SLATimer({
     }
 
     const deadlineMs = toMs(deadline);
-    const startMs = startTime ? toMs(startTime) : (deadlineMs - 24 * 3_600_000); // Default to 24h if no start time
-    
     if (isNaN(deadlineMs)) {
       setDisplayTime("--:--:--");
       return;
     }
 
-    const tick = () => {
-      const now = Date.now();
-      let effectiveNow = now;
-      
-      if (isPaused && onHoldStart) {
-        const holdMs = toMs(onHoldStart);
-        if (!isNaN(holdMs)) effectiveNow = holdMs;
-      }
+    const startMs = startTime ? toMs(startTime) : (deadlineMs - 24 * 3_600_000);
 
-      // Adjust for paused time
-      const diff = deadlineMs - effectiveNow + (totalPausedTime || 0);
-      const totalDuration = deadlineMs - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs);
-      
-      // Calculate percentage used: (elapsed / total) * 100
-      const elapsed = effectiveNow - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs) - (totalPausedTime || 0);
-      const calculatedPercentage = totalDuration > 0 ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0;
+    // ── CASE 3: Ticket is ON HOLD — freeze timer at current remaining value ─────
+    if (isPaused) {
+      // Calculate remaining time at the moment the hold started
+      const holdStartMs = onHoldStart ? toMs(onHoldStart) : Date.now();
+      const effectiveHoldStart = !isNaN(holdStartMs) ? holdStartMs : Date.now();
+      const diff = deadlineMs - effectiveHoldStart + (totalPausedTime || 0);
 
       if (diff <= 0) {
-        // === BREACHED: Clamp display to 00:00:00 ===
         setStatus("breached");
         setDisplayTime("00:00:00");
         setPercentage(100);
-
-        // Calculate how long ago the breach occurred (for context only)
         const overdue = Math.abs(diff);
         if (overdue >= 3_600_000) {
           const h = Math.floor(overdue / 3_600_000);
           const m = Math.floor((overdue % 3_600_000) / 60_000);
           setBreachDuration(`${h}h ${m}m overdue`);
         } else if (overdue >= 60_000) {
-          const m = Math.floor(overdue / 60_000);
-          setBreachDuration(`${m}m overdue`);
+          setBreachDuration(`${Math.floor(overdue / 60_000)}m overdue`);
+        } else {
+          setBreachDuration("just breached");
+        }
+      } else {
+        setStatus("paused");
+        setBreachDuration("");
+        const h = Math.floor(diff / 3_600_000);
+        const m = Math.floor((diff % 3_600_000) / 60_000);
+        const s = Math.floor((diff % 60_000) / 1_000);
+        setDisplayTime(
+          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+        );
+        const totalDuration = deadlineMs - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs);
+        const elapsed = effectiveHoldStart - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs) - (totalPausedTime || 0);
+        setPercentage(totalDuration > 0 ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0);
+      }
+      // No interval — timer is frozen while on hold
+      return;
+    }
+
+    // ── CASE 4: Active timer — tick every second ────────────────────────────────
+    const tick = () => {
+      const now = Date.now();
+      const diff = deadlineMs - now + (totalPausedTime || 0);
+      const totalDuration = deadlineMs - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs);
+      const elapsed = now - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs) - (totalPausedTime || 0);
+      const calculatedPercentage = totalDuration > 0 ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0;
+
+      if (diff <= 0) {
+        setStatus("breached");
+        setDisplayTime("00:00:00");
+        setPercentage(100);
+
+        const overdue = Math.abs(diff);
+        if (overdue >= 3_600_000) {
+          const h = Math.floor(overdue / 3_600_000);
+          const m = Math.floor((overdue % 3_600_000) / 60_000);
+          setBreachDuration(`${h}h ${m}m overdue`);
+        } else if (overdue >= 60_000) {
+          setBreachDuration(`${Math.floor(overdue / 60_000)}m overdue`);
         } else {
           setBreachDuration("just breached");
         }
 
-        // Stop the interval — no need to keep ticking once breached
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
       } else {
-        setStatus(isPaused ? "paused" : "active");
+        setStatus("active");
         setBreachDuration("");
         const h = Math.floor(diff / 3_600_000);
         const m = Math.floor((diff % 3_600_000) / 60_000);
@@ -151,7 +178,7 @@ export function SLATimer({
     };
   }, [deadline, startTime, metAt, isPaused, onHoldStart, totalPausedTime, waitUntil]);
 
-  // Advanced SLA Logic (Based on Percentage Used)
+  // ── Display helpers ──────────────────────────────────────────────────────────
   const getEscalationStatus = () => {
     if (status === "met") return "COMPLETED";
     if (status === "breached") return "SLA BREACHED";
@@ -179,14 +206,11 @@ export function SLATimer({
     if (status === "breached") return "text-red-600 animate-pulse font-black";
     if (status === "paused") return "text-amber-600";
     if (status === "waiting") return "text-gray-400";
-    
     if (percentage >= 90) return "text-orange-700 font-bold";
     if (percentage >= 81) return "text-orange-600";
     if (percentage >= 51) return "text-yellow-600";
     return "text-blue-600";
   };
-
-
 
   return (
     <div className="flex flex-col gap-1.5 p-2 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-all group min-w-[160px]">
@@ -199,9 +223,10 @@ export function SLATimer({
           "text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter transition-all",
           status === "met" ? "bg-emerald-50 text-emerald-700" :
             status === "breached" ? "bg-red-100 text-red-700 animate-bounce" :
-              status === "waiting" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-100/30" :
-                percentage >= 81 ? "bg-orange-100 text-orange-700" :
-                  percentage >= 51 ? "bg-yellow-100 text-yellow-700" : "bg-blue-50 text-blue-700"
+              status === "paused" ? "bg-amber-50 text-amber-700 border border-amber-200/50" :
+                status === "waiting" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-100/30" :
+                  percentage >= 81 ? "bg-orange-100 text-orange-700" :
+                    percentage >= 51 ? "bg-yellow-100 text-yellow-700" : "bg-blue-50 text-blue-700"
         )}>
           {getEscalationStatus()}
         </span>
@@ -232,7 +257,7 @@ export function SLATimer({
         />
       </div>
 
-      {/* Escalation Notification Preview */}
+      {/* Status footer */}
       <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/30">
         {status === "waiting" ? (
           <>
@@ -240,6 +265,20 @@ export function SLATimer({
               Pending Handover
             </span>
             <Clock className="w-2.5 h-2.5 text-muted-foreground/40" />
+          </>
+        ) : status === "paused" ? (
+          <>
+            <span className="text-[7px] text-amber-600/80 font-bold uppercase tracking-tight flex items-center gap-1">
+              Timer Paused
+            </span>
+            <Clock className="w-2.5 h-2.5 text-amber-400/60" />
+          </>
+        ) : status === "met" ? (
+          <>
+            <span className="text-[7px] text-emerald-600/80 font-bold uppercase tracking-tight">
+              SLA Met
+            </span>
+            <AlertCircle className="w-2.5 h-2.5 text-emerald-400/60" />
           </>
         ) : (
           <>
