@@ -36,7 +36,7 @@ FIREBASE_DATABASE_ID=your_firestore_database_id
 # ============================================
 # Email Configuration (Optional - for notifications)
 # ============================================
-SMTP_HOST=smtp.gmail.com
+SMTP_HOST=smtp.office365.com
 SMTP_PORT=587
 SMTP_USER=support@technosprint.net
 SMTP_PASS=Poland@01
