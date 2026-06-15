@@ -357,7 +357,6 @@ public class EmailService {
                         "SELECT email_integration_id FROM companies WHERE id = ?", Long.class, companyId);
                     if (configId != null) {
                         return configRepo.findById(configId)
-                            .filter(cfg -> Boolean.TRUE.equals(cfg.getIsActive()))
                             .orElseGet(this::getActiveConfig);
                     }
                 }

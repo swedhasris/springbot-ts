@@ -192,9 +192,22 @@ interface NotesEditorProps {
   canEdit: boolean;
   onBlur: () => void;
   editorRef: React.RefObject<HTMLDivElement | null>;
+  initialValue: string;
 }
 
-const NotesEditor = React.memo(({ canEdit, onBlur, editorRef }: NotesEditorProps) => {
+const NotesEditor = React.memo(({ canEdit, onBlur, editorRef, initialValue }: NotesEditorProps) => {
+  const lastSetValRef = React.useRef(initialValue);
+
+  React.useEffect(() => {
+    if (editorRef.current) {
+      if (document.activeElement === editorRef.current) {
+        return;
+      }
+      editorRef.current.innerHTML = initialValue;
+      lastSetValRef.current = initialValue;
+    }
+  }, [initialValue, editorRef]);
+
   return (
     <div
       ref={editorRef}
@@ -995,6 +1008,7 @@ export function Timesheet() {
                     canEdit={canEdit}
                     onBlur={handleEditorInput}
                     editorRef={editorRef}
+                    initialValue={notesContent}
                   />
                   <RichTextToolbar
                     editorRef={editorRef}
