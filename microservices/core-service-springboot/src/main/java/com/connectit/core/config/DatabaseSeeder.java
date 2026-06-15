@@ -1,5 +1,5 @@
 package com.connectit.core.config;
-
+ 
 import com.connectit.core.model.CompanyEmailConfig;
 import com.connectit.core.model.SLAPolicy;
 import com.connectit.core.model.User;
@@ -8,22 +8,53 @@ import com.connectit.core.repository.SLAPolicyRepository;
 import com.connectit.core.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-
+ 
 import java.util.List;
 import java.util.Map;
-
+ 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class DatabaseSeeder implements CommandLineRunner {
-
+ 
     private final UserRepository userRepository;
     private final SLAPolicyRepository slaPolicyRepository;
     private final CompanyEmailConfigRepository companyEmailConfigRepository;
     private final JdbcTemplate jdbcTemplate;
+
+    @Value("${spring.mail.host:smtp.office365.com}")
+    private String smtpHost;
+
+    @Value("${spring.mail.port:587}")
+    private Integer smtpPort;
+
+    @Value("${spring.mail.username:info@technosprint.net}")
+    private String smtpUser;
+
+    @Value("${spring.mail.password:Poland@01}")
+    private String smtpPass;
+
+    @Value("${app.mail.from:info@technosprint.net}")
+    private String mailFrom;
+
+    @Value("${app.mail.from-name:TechnoSprint Support}")
+    private String mailFromName;
+
+    @Value("${app.imap.host:outlook.office365.com}")
+    private String imapHost;
+
+    @Value("${app.imap.port:993}")
+    private Integer imapPort;
+
+    @Value("${app.imap.user:info@technosprint.net}")
+    private String imapUser;
+
+    @Value("${app.imap.pass:Poland@01}")
+    private String imapPass;
 
     @Override
     public void run(String... args) throws Exception {
@@ -242,26 +273,27 @@ public class DatabaseSeeder implements CommandLineRunner {
 
     private void seedDefaultCompanyEmailConfig() {
         try {
-            if (companyEmailConfigRepository.count() == 0) {
-                log.info("[DatabaseSeeder] Seeding default company email config...");
-                companyEmailConfigRepository.save(CompanyEmailConfig.builder()
-                    .companyName("Technosprint Support")
-                    .emailAddress("support@technosprint.net")
-                    .smtpHost("smtp.office365.com")
-                    .smtpPort(587)
-                    .smtpUser("support@technosprint.net")
-                    .smtpPass("Poland@01")
-                    .imapHost("outlook.office365.com")
-                    .imapPort(993)
-                    .imapUser("support@technosprint.net")
-                    .imapPass("Poland@01")
-                    .encryption("TLS")
-                    .isActive(true)
-                    .isDefault(true)
-                    .build());
-            }
+            java.util.Optional<CompanyEmailConfig> existingOpt = companyEmailConfigRepository.findById(1L);
+            CompanyEmailConfig cfg = existingOpt.orElse(new CompanyEmailConfig());
+            cfg.setId(1L);
+            cfg.setCompanyName(mailFromName);
+            cfg.setEmailAddress(mailFrom);
+            cfg.setSmtpHost(smtpHost);
+            cfg.setSmtpPort(smtpPort);
+            cfg.setSmtpUser(smtpUser);
+            cfg.setSmtpPass(smtpPass);
+            cfg.setImapHost(imapHost);
+            cfg.setImapPort(imapPort);
+            cfg.setImapUser(imapUser);
+            cfg.setImapPass(imapPass);
+            cfg.setEncryption("TLS");
+            cfg.setIsActive(true);
+            cfg.setIsDefault(true);
+            
+            companyEmailConfigRepository.save(cfg);
+            log.info("[DatabaseSeeder] Seeded/updated default company email config (info@technosprint.net) successfully.");
         } catch (Exception e) {
-            log.error("[DatabaseSeeder] Failed to seed default company email config: {}", e.getMessage());
+            log.error("[DatabaseSeeder] Failed to seed/update default company email config: {}", e.getMessage());
         }
     }
 

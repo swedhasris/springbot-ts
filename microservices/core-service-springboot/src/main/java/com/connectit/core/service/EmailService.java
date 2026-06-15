@@ -35,6 +35,18 @@ public class EmailService {
     @Value("${app.mail.from-name:Technosprint Support}")
     private String defaultFromName;
 
+    @Value("${spring.mail.host:smtp.office365.com}")
+    private String smtpHost;
+
+    @Value("${spring.mail.port:587}")
+    private Integer smtpPort;
+
+    @Value("${app.imap.host:outlook.office365.com}")
+    private String imapHost;
+
+    @Value("${app.imap.port:993}")
+    private Integer imapPort;
+
     private static final int[] RETRY_DELAYS_SECONDS = {60, 300, 900, 1800, 3600};
 
     // ── Enqueue ────────────────────────────────────────────────────────────────
@@ -173,6 +185,68 @@ public class EmailService {
                     "<strong>🚨 SLA " + slaType + " has been BREACHED. Immediate escalation required.</strong></div>" +
                     ticketTable(t), t.getTicketNumber()));
         }
+    }
+
+    public void notifyReassigned(Ticket t, String agentEmail, String agentName, String oldAgentName) {
+        if (!isEmail(agentEmail)) return;
+        enqueue("ticket_reassigned", t.getId(), t.getTicketNumber(), agentEmail,
+            "[" + t.getTicketNumber() + "] Ticket Reassigned to " + agentName,
+            buildTemplate("Ticket Reassigned", t.getTicketNumber(),
+                "<p>Hello <strong>" + agentName + "</strong>,</p>" +
+                "<p>A ticket has been reassigned to you from <strong>" + (oldAgentName != null ? oldAgentName : "Unassigned") + "</strong>.</p>" +
+                ticketTable(t), t.getTicketNumber()));
+    }
+
+    public void notifyClosed(Ticket t) {
+        String to = t.getCallerEmail() != null ? t.getCallerEmail() : t.getCaller();
+        if (!isEmail(to)) return;
+        enqueue("ticket_closed", t.getId(), t.getTicketNumber(), to,
+            "[" + t.getTicketNumber() + "] Ticket Closed",
+            buildTemplate("Ticket Closed", t.getTicketNumber(),
+                "<p>Hello,</p><p>Your ticket has been <strong style='color:#475569'>closed</strong>.</p>" +
+                ticketTable(t) + "<p>If you have further questions, please contact support.</p>", t.getTicketNumber()));
+    }
+
+    public void notifyReopened(Ticket t) {
+        // Notify caller
+        String caller = t.getCallerEmail() != null ? t.getCallerEmail() : t.getCaller();
+        if (isEmail(caller)) {
+            enqueue("ticket_reopened", t.getId(), t.getTicketNumber(), caller,
+                "[" + t.getTicketNumber() + "] Ticket Reopened",
+                buildTemplate("Ticket Reopened", t.getTicketNumber(),
+                    "<p>Hello,</p><p>Your ticket has been reopened.</p>" +
+                    ticketTable(t), t.getTicketNumber()));
+        }
+        // Notify assigned agent if any
+        String agentEmail = resolveAgentEmail(t);
+        if (isEmail(agentEmail)) {
+            enqueue("ticket_reopened", t.getId(), t.getTicketNumber(), agentEmail,
+                "[" + t.getTicketNumber() + "] Ticket Reopened (Assigned to you)",
+                buildTemplate("Ticket Reopened", t.getTicketNumber(),
+                    "<p>Hello,</p><p>A ticket assigned to you has been reopened by the caller.</p>" +
+                    ticketTable(t), t.getTicketNumber()));
+        }
+    }
+
+    public void notifyApprovalRequested(Ticket t, String approverEmail, String approverName) {
+        if (!isEmail(approverEmail)) return;
+        enqueue("approval_requested", t.getId(), t.getTicketNumber(), approverEmail,
+            "[" + t.getTicketNumber() + "] Approval Required: " + t.getTitle(),
+            buildTemplate("Approval Requested", t.getTicketNumber(),
+                "<p>Hello <strong>" + approverName + "</strong>,</p>" +
+                "<p>Your approval is required for support ticket <strong>" + t.getTicketNumber() + "</strong>.</p>" +
+                ticketTable(t) +
+                "<p>Please review and take action in the portal.</p>", t.getTicketNumber()));
+    }
+
+    public void notifyEscalated(Ticket t, String managerEmail, String managerName, String reason) {
+        if (!isEmail(managerEmail)) return;
+        enqueue("ticket_escalated", t.getId(), t.getTicketNumber(), managerEmail,
+            "🚨 Escalation: [" + t.getTicketNumber() + "] " + t.getTitle(),
+            buildTemplate("Ticket Escalated", t.getTicketNumber(),
+                "<div style='background:#fee2e2;border-left:4px solid #dc2626;padding:12px;margin:16px 0'>" +
+                "<strong>🚨 Ticket has been escalated.</strong><br/>Reason: " + (reason != null ? reason : "Priority Escalation") + "</div>" +
+                ticketTable(t), t.getTicketNumber()));
     }
 
     // ── Core send ──────────────────────────────────────────────────────────────
@@ -395,6 +469,18 @@ public class EmailService {
         sendMail(getActiveConfig(), to, subject, html, ticketNumber, null, null);
     }
 
+    private String checkSocket(String host, Integer port) {
+        if (host == null || host.isBlank() || port == null) {
+            return "error: not configured";
+        }
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, port), 2000);
+            return "online";
+        } catch (Exception e) {
+            return "error: " + e.getMessage();
+        }
+    }
+
     // ── Health ────────────────────────────────────────────────────────────────
     public Map<String,Object> getHealth() {
         List<CompanyEmailConfig> configs = configRepo.findByIsActiveTrueOrderByIsDefaultDescCompanyNameAsc();
@@ -405,16 +491,57 @@ public class EmailService {
         CompanyEmailConfig activeCfg = getActiveConfig();
         String activeMailbox = activeCfg != null ? activeCfg.getEmailAddress() : defaultFrom;
 
-        return Map.of(
-            "status",           "configured",
-            "configurations",   configs.size(),
-            "activeMailbox",    activeMailbox,
-            "queue",            Map.of(
-                "pending", queueStats.getOrDefault("pending",0L),
-                "failed",  queueStats.getOrDefault("failed",0L),
-                "sent",    queueStats.getOrDefault("sent",0L)
-            )
-        );
+        // Socket checks
+        String activeSmtpHost = activeCfg != null ? activeCfg.getSmtpHost() : smtpHost;
+        Integer activeSmtpPort = activeCfg != null ? activeCfg.getSmtpPort() : smtpPort;
+        String activeImapHost = activeCfg != null ? activeCfg.getImapHost() : imapHost;
+        Integer activeImapPort = activeCfg != null ? activeCfg.getImapPort() : imapPort;
+
+        String smtpStatus = checkSocket(activeSmtpHost, activeSmtpPort != null ? activeSmtpPort : 587);
+        String imapStatus = checkSocket(activeImapHost, activeImapPort != null ? activeImapPort : 993);
+
+        // DB stats query
+        LocalDateTime lastSync = null;
+        try {
+            lastSync = jdbcTemplate.queryForObject(
+                "SELECT MAX(received_at) FROM email_logs WHERE direction = 'inbound'", LocalDateTime.class);
+        } catch (Exception ignored) {}
+
+        long sentEmails = 0;
+        try {
+            sentEmails = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM email_logs WHERE direction = 'outbound' AND status = 'sent'", Long.class);
+        } catch (Exception ignored) {}
+
+        long receivedEmails = 0;
+        try {
+            receivedEmails = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM email_logs WHERE direction = 'inbound' AND status = 'success'", Long.class);
+        } catch (Exception ignored) {}
+
+        long failedEmails = 0;
+        try {
+            failedEmails = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM email_logs WHERE status = 'failed'", Long.class);
+        } catch (Exception ignored) {}
+
+        Map<String, Object> healthMap = new HashMap<>();
+        healthMap.put("status", "configured");
+        healthMap.put("configurations", configs.size());
+        healthMap.put("activeMailbox", activeMailbox);
+        healthMap.put("smtpStatus", smtpStatus);
+        healthMap.put("imapStatus", imapStatus);
+        healthMap.put("lastSync", lastSync);
+        healthMap.put("sentEmails", sentEmails);
+        healthMap.put("receivedEmails", receivedEmails);
+        healthMap.put("failedEmails", failedEmails);
+        healthMap.put("queue", Map.of(
+            "pending", queueStats.getOrDefault("pending", 0L),
+            "failed", queueStats.getOrDefault("failed", 0L),
+            "sent", queueStats.getOrDefault("sent", 0L)
+        ));
+        
+        return healthMap;
     }
 
     private void logEmail(String direction, String recipient, String sender, String subject,

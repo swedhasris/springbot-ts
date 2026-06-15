@@ -19,6 +19,7 @@ public class TicketService {
     private final UserRepository userRepo;
     private final EmailLogRepository emailLogRepo;
     private final EmailService emailService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     private static final Map<String,Integer> RESPONSE_HOURS = Map.of(
         "1 - Critical",2, "2 - High",4, "3 - Moderate",8, "4 - Low",24
@@ -119,8 +120,10 @@ public class TicketService {
         Ticket t = ticketRepo.findById(id)
             .orElseThrow(() -> new RuntimeException("Ticket not found: " + id));
 
-        String prevStatus   = t.getStatus();
-        String prevAssignee = t.getAssignedTo();
+        String prevStatus         = t.getStatus();
+        String prevAssignee       = t.getAssignedTo();
+        String prevApprovalStatus = t.getApprovalStatus();
+        String prevPriority       = t.getPriority();
 
         // SLA breach RCA validation
         String newStatus = (String) data.get("status");
@@ -160,26 +163,121 @@ public class TicketService {
             updatedByName != null ? updatedByName : (String) data.getOrDefault("updatedBy","System"), msg, null);
 
         // Notifications
-        if (newStatus != null && !newStatus.equals(prevStatus) && t.getCreatedBy() != null) {
-            createNotification(t.getCreatedBy(), "Ticket Status Updated",
-                "Your ticket " + t.getTicketNumber() + " status changed to " + newStatus,
-                "status_changed", t.getTicketNumber());
+        String newStatusLocal = t.getStatus();
+        if (newStatusLocal != null && !newStatusLocal.equals(prevStatus)) {
+            if (t.getCreatedBy() != null) {
+                createNotification(t.getCreatedBy(), "Ticket Status Updated",
+                    "Your ticket " + t.getTicketNumber() + " status changed to " + newStatusLocal,
+                    "status_changed", t.getTicketNumber());
+            }
 
-            emailService.notifyStatusChanged(t, prevStatus, newStatus);
-            if ("Resolved".equalsIgnoreCase(newStatus)) {
+            emailService.notifyStatusChanged(t, prevStatus, newStatusLocal);
+            if ("Resolved".equalsIgnoreCase(newStatusLocal)) {
                 emailService.notifyResolved(t);
+            } else if ("Closed".equalsIgnoreCase(newStatusLocal)) {
+                emailService.notifyClosed(t);
+            } else if (List.of("Resolved", "Closed").contains(prevStatus) && !List.of("Resolved", "Closed").contains(newStatusLocal)) {
+                emailService.notifyReopened(t);
             }
         }
-        String newAssignee = (String) data.get("assignedTo");
+
+        String newAssignee = t.getAssignedTo();
         if (newAssignee != null && !newAssignee.equals(prevAssignee)) {
             createNotification(newAssignee, "Ticket Assigned to You",
                 "Ticket " + t.getTicketNumber() + " has been assigned to you.",
                 "ticket_assigned", t.getTicketNumber());
 
             final Ticket finalT = t;
-            userRepo.findByUid(newAssignee).ifPresent(agent -> {
-                emailService.notifyAssigned(finalT, agent.getEmail(), agent.getName());
-            });
+            if (prevAssignee != null) {
+                // Reassignment
+                String oldAgentName = userRepo.findByUid(prevAssignee).map(User::getName).orElse("Previous Agent");
+                userRepo.findByUid(newAssignee).ifPresent(agent -> {
+                    emailService.notifyReassigned(finalT, agent.getEmail(), agent.getName(), oldAgentName);
+                });
+            } else {
+                // Assignment
+                userRepo.findByUid(newAssignee).ifPresent(agent -> {
+                    emailService.notifyAssigned(finalT, agent.getEmail(), agent.getName());
+                });
+            }
+        }
+
+        // Approval requested check
+        String newApprovalStatus = t.getApprovalStatus();
+        if (newApprovalStatus != null && "Requested".equals(newApprovalStatus) && !newApprovalStatus.equals(prevApprovalStatus)) {
+            String approverEmail = (String) data.get("approverEmail");
+            String approverName = (String) data.get("approverName");
+            if (approverEmail == null || approverEmail.isBlank()) {
+                // Look up group manager
+                String groupName = t.getAssignmentGroup();
+                if (groupName != null && !groupName.isBlank()) {
+                    try {
+                        Map<String, Object> groupInfo = jdbcTemplate.queryForMap(
+                            "SELECT manager_uid, manager_name, assignment_email FROM settings_groups WHERE name = ? LIMIT 1", groupName);
+                        String mUid = (String) groupInfo.get("manager_uid");
+                        String mName = (String) groupInfo.get("manager_name");
+                        String mEmail = (String) groupInfo.get("assignment_email");
+                        if (mEmail != null && mEmail.contains("@")) {
+                            approverEmail = mEmail;
+                            approverName = mName != null ? mName : "Group Manager";
+                        } else if (mUid != null) {
+                            approverEmail = userRepo.findByUid(mUid).map(User::getEmail).orElse(null);
+                            approverName = mName != null ? mName : (approverEmail != null ? approverEmail : "Group Manager");
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+            if (approverEmail == null || approverEmail.isBlank()) {
+                approverEmail = userRepo.findByRoleInAndIsActiveTrue(List.of("admin", "super_admin", "ultra_super_admin"))
+                    .stream().findFirst().map(User::getEmail).orElse("admin@technosprint.net");
+                approverName = "System Administrator";
+            }
+            emailService.notifyApprovalRequested(t, approverEmail, approverName);
+        }
+
+        // Escalation check (priority becomes "1 - Critical" and was not before)
+        String newPriority = t.getPriority();
+        if (newPriority != null && "1 - Critical".equals(newPriority) && !newPriority.equals(prevPriority)) {
+            // Notify manager of group
+            String groupName = t.getAssignmentGroup();
+            String managerEmail = null;
+            String managerName = null;
+            if (groupName != null && !groupName.isBlank()) {
+                try {
+                    Map<String, Object> groupInfo = jdbcTemplate.queryForMap(
+                        "SELECT manager_uid, manager_name, assignment_email FROM settings_groups WHERE name = ? LIMIT 1", groupName);
+                    String mUid = (String) groupInfo.get("manager_uid");
+                    String mName = (String) groupInfo.get("manager_name");
+                    String mEmail = (String) groupInfo.get("assignment_email");
+                    if (mEmail != null && mEmail.contains("@")) {
+                        managerEmail = mEmail;
+                        managerName = mName != null ? mName : "Group Manager";
+                    } else if (mUid != null) {
+                        managerEmail = userRepo.findByUid(mUid).map(User::getEmail).orElse(null);
+                        managerName = mName != null ? mName : "Group Manager";
+                    }
+                } catch (Exception ignored) {}
+            }
+            
+            if (managerEmail != null && managerEmail.contains("@")) {
+                emailService.notifyEscalated(t, managerEmail, managerName, "Ticket escalated to Critical priority");
+            } else {
+                // Fallback to notify first admin
+                String adminEmail = userRepo.findByRoleInAndIsActiveTrue(List.of("admin", "super_admin", "ultra_super_admin"))
+                    .stream().findFirst().map(User::getEmail).orElse("admin@technosprint.net");
+                emailService.notifyEscalated(t, adminEmail, "System Administrator", "Ticket escalated to Critical priority");
+            }
+            
+            // Also notify assigned agent if any
+            String agentEmail = "";
+            if (t.getAssignedTo() != null) {
+                agentEmail = userRepo.findByUid(t.getAssignedTo())
+                    .map(User::getEmail)
+                    .orElse(t.getAssignedTo());
+            }
+            if (isEmail(agentEmail)) {
+                emailService.notifyEscalated(t, agentEmail, t.getAssignedToName() != null ? t.getAssignedToName() : "Assigned Agent", "Ticket escalated to Critical priority");
+            }
         }
 
         return t;
@@ -445,4 +543,6 @@ public class TicketService {
             }
         }
     }
+
+    private boolean isEmail(String s) { return s != null && s.contains("@"); }
 }

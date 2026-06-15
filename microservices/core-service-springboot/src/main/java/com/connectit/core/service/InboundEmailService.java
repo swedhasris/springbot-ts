@@ -69,7 +69,15 @@ public class InboundEmailService {
         for (CompanyEmailConfig cfg : configs) {
             try {
                 if (isOffice365Host(cfg.getImapHost())) {
-                    pollMailboxViaGraphApi(cfg);
+                    try {
+                        pollMailboxViaGraphApi(cfg);
+                    } catch (IllegalStateException oauthEx) {
+                        log.warn("[InboundEmail] Graph API credentials not configured. Falling back to IMAP for {}", cfg.getEmailAddress());
+                        pollMailboxViaImap(cfg);
+                    } catch (Exception graphEx) {
+                        log.error("[InboundEmail] Graph API polling failed for {}: {}. Trying IMAP fallback...", cfg.getEmailAddress(), graphEx.getMessage());
+                        pollMailboxViaImap(cfg);
+                    }
                 } else {
                     pollMailboxViaImap(cfg);
                 }
