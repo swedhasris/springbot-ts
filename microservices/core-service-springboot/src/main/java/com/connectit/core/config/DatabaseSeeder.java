@@ -273,9 +273,13 @@ public class DatabaseSeeder implements CommandLineRunner {
 
     private void seedDefaultCompanyEmailConfig() {
         try {
-            java.util.Optional<CompanyEmailConfig> existingOpt = companyEmailConfigRepository.findById(1L);
-            CompanyEmailConfig cfg = existingOpt.orElse(new CompanyEmailConfig());
-            cfg.setId(1L);
+            CompanyEmailConfig cfg = null;
+            List<CompanyEmailConfig> allConfigs = companyEmailConfigRepository.findAll();
+            if (!allConfigs.isEmpty()) {
+                cfg = allConfigs.get(0);
+            } else {
+                cfg = new CompanyEmailConfig();
+            }
             cfg.setCompanyName(mailFromName);
             cfg.setEmailAddress(mailFrom);
             cfg.setSmtpHost(smtpHost);
