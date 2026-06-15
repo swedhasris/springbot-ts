@@ -187,39 +187,7 @@ function RichTextToolbar({
   );
 }
 
-/* ─── Notes Editor (memoized to prevent re-renders wiping text) ─── */
-interface NotesEditorProps {
-  canEdit: boolean;
-  onBlur: () => void;
-  editorRef: React.RefObject<HTMLDivElement | null>;
-  initialValue: string;
-}
-
-const NotesEditor = React.memo(({ canEdit, onBlur, editorRef, initialValue }: NotesEditorProps) => {
-  const lastSetValRef = React.useRef(initialValue);
-
-  React.useEffect(() => {
-    if (editorRef.current) {
-      if (document.activeElement === editorRef.current) {
-        return;
-      }
-      editorRef.current.innerHTML = initialValue;
-      lastSetValRef.current = initialValue;
-    }
-  }, [initialValue, editorRef]);
-
-  return (
-    <div
-      ref={editorRef}
-      contentEditable={canEdit}
-      onBlur={onBlur}
-      className="min-h-[200px] p-3 text-sm outline-none focus:ring-1 focus:ring-inset focus:ring-sn-green bg-card"
-      data-placeholder="Enter notes..."
-      suppressContentEditableWarning
-    />
-  );
-});
-NotesEditor.displayName = "NotesEditor";
+/* ─── Notes Editor removed — contentEditable rendered inline to prevent React reconciliation wiping ─── */
 
 /* ════════════════════════════════════════ MAIN ════════════════════════════════════════ */
 export function Timesheet() {
@@ -1004,11 +972,15 @@ export function Timesheet() {
                   <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                 </div>
                 <div className="border border-border rounded-lg overflow-hidden">
-                  <NotesEditor
-                    canEdit={canEdit}
+                  {/* contentEditable rendered inline — React won't touch DOM children of this div during re-renders */}
+                  <div
+                    ref={editorRef}
+                    contentEditable={canEdit}
                     onBlur={handleEditorInput}
-                    editorRef={editorRef}
-                    initialValue={notesContent}
+                    onInput={handleEditorInput}
+                    className="min-h-[200px] p-3 text-sm outline-none focus:ring-1 focus:ring-inset focus:ring-sn-green bg-card"
+                    data-placeholder="Enter notes..."
+                    suppressContentEditableWarning
                   />
                   <RichTextToolbar
                     editorRef={editorRef}
