@@ -52,6 +52,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useTickets } from "../contexts/TicketsContext";
 import { useBranding } from "../contexts/BrandingContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { useWorkspace } from "./WorkspaceLayout";
 
 interface MenuItem {
   icon?: any;
@@ -71,7 +72,24 @@ export function Sidebar() {
   const { openTicketsCount, assignedToMeCount } = useTickets();
   const { branding } = useBranding();
   const { setTheme, resolvedTheme } = useTheme();
+  const { openTab } = useWorkspace();
   const location = useLocation();
+
+  const [contextMenu, setContextMenu] = useState<{
+    show: boolean;
+    x: number;
+    y: number;
+    path: string;
+    label: string;
+  }>({ show: false, x: 0, y: 0, path: "", label: "" });
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      if (contextMenu.show) setContextMenu({ show: false, x: 0, y: 0, path: "", label: "" });
+    };
+    document.addEventListener("click", handleGlobalClick);
+    return () => document.removeEventListener("click", handleGlobalClick);
+  }, [contextMenu.show]);
 
   const isActive = (itemPath: string) => {
     if (!itemPath) return false;
@@ -377,6 +395,30 @@ export function Sidebar() {
                     <Link
                       key={item.label}
                       to={item.path || "#"}
+                      onClick={(e) => {
+                        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                          e.preventDefault();
+                          openTab(item.path || "#", { forceNew: true });
+                        }
+                      }}
+                      onAuxClick={(e) => {
+                        if (e.button === 1) {
+                          e.preventDefault();
+                          openTab(item.path || "#", { forceNew: true });
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        if (item.path) {
+                          e.preventDefault();
+                          setContextMenu({
+                            show: true,
+                            x: e.clientX,
+                            y: e.clientY,
+                            path: item.path,
+                            label: item.label
+                          });
+                        }
+                      }}
                       className={cn(
                         "flex items-center gap-3 px-3 py-2 rounded-xl transition-all relative group cursor-pointer",
                         isActive(item.path)
@@ -430,6 +472,25 @@ export function Sidebar() {
 
       {/* Reset Password Modal */}
       <PasswordResetModal show={showResetModal} onClose={() => setShowResetModal(false)} />
+
+      {/* Floating Sidebar Link Context Menu */}
+      {contextMenu.show && (
+        <div
+          className="fixed bg-[#0c101f]/95 border border-white/10 backdrop-blur-xl rounded-xl shadow-2xl py-1.5 z-[9999] text-[11px] font-outfit text-white min-w-[150px] animate-in fade-in zoom-in-95 duration-100 shadow-[0_10px_25px_rgba(0,0,0,0.5)]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={() => {
+              openTab(contextMenu.path, { forceNew: true });
+              setContextMenu({ show: false, x: 0, y: 0, path: "", label: "" });
+            }}
+            className="w-full text-left px-4 py-2 hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
+          >
+            <PlusCircle className="w-3.5 h-3.5 text-slate-400" />
+            Open in New Tab
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

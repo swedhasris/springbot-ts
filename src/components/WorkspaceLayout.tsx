@@ -34,6 +34,7 @@ interface TabWorkspaceContextType {
   reorder: (startIndex: number, endIndex: number) => void;
   reopenClosedTab: () => void;
   setTabTitle: (id: string, title: string) => void;
+  switchToTab: (id: string) => void;
 }
 
 const TabWorkspaceContext = createContext<TabWorkspaceContextType | null>(null);
@@ -55,7 +56,8 @@ export function useWorkspace() {
       duplicateTab: () => {},
       reorder: () => {},
       reopenClosedTab: () => {},
-      setTabTitle: () => {}
+      setTabTitle: () => {},
+      switchToTab: () => {}
     };
   }
   return context;
@@ -169,6 +171,7 @@ function getTabIconFromPath(path: string) {
 export function TabWorkspaceProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const isSwitchingTabRef = useRef(false);
 
   // Load from local storage
   const [isTabsEnabled, setIsTabsEnabled] = useState<boolean>(() => {
@@ -219,6 +222,15 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
     setIsTabsEnabled(prev => !prev);
   };
 
+  const programNavigate = (targetPath: string, targetTabId: string) => {
+    const currentPath = location.pathname + location.search;
+    if (targetPath !== currentPath) {
+      isSwitchingTabRef.current = true;
+    }
+    setActiveTabId(targetTabId);
+    navigate(targetPath);
+  };
+
   const openTab = (path: string, options?: { title?: string; focus?: boolean; forceNew?: boolean }) => {
     if (!isTabsEnabled) {
       navigate(path);
@@ -232,10 +244,7 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
     if (!options?.forceNew) {
       const existingTab = tabs.find(t => t.path === path);
       if (existingTab) {
-        setActiveTabId(existingTab.id);
-        if (location.pathname + location.search !== path) {
-          navigate(path);
-        }
+        programNavigate(path, existingTab.id);
         return;
       }
     }
@@ -250,8 +259,7 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
     };
 
     setTabs(prev => [...prev, newTab]);
-    setActiveTabId(newId);
-    navigate(path);
+    programNavigate(path, newId);
   };
 
   const closeTab = (id: string) => {
@@ -270,15 +278,13 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
         const closedIdx = tabs.findIndex(t => t.id === id);
         const nextActiveIdx = Math.min(closedIdx, newTabs.length - 1);
         const nextActive = newTabs[nextActiveIdx];
-        setActiveTabId(nextActive.id);
-        navigate(nextActive.path);
+        programNavigate(nextActive.path, nextActive.id);
       } else {
         // Open a new dashboard tab
         const defaultId = "default-dashboard";
         const defaultTab = { id: defaultId, path: "/my-dashboard", title: "My Dashboard", pinned: false };
         setTabs([defaultTab]);
-        setActiveTabId(defaultId);
-        navigate("/my-dashboard");
+        programNavigate("/my-dashboard", defaultId);
       }
     }
   };
@@ -290,8 +296,7 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
     // Keep pinned tabs and the selected tab
     const newTabs = tabs.filter(t => t.id === id || t.pinned);
     setTabs(newTabs);
-    setActiveTabId(id);
-    navigate(tabToKeep.path);
+    programNavigate(tabToKeep.path, id);
   };
 
   const closeAll = () => {
@@ -299,14 +304,12 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
     const pinnedTabs = tabs.filter(t => t.pinned);
     if (pinnedTabs.length > 0) {
       setTabs(pinnedTabs);
-      setActiveTabId(pinnedTabs[0].id);
-      navigate(pinnedTabs[0].path);
+      programNavigate(pinnedTabs[0].path, pinnedTabs[0].id);
     } else {
       const defaultId = "default-dashboard";
       const defaultTab = { id: defaultId, path: "/my-dashboard", title: "My Dashboard", pinned: false };
       setTabs([defaultTab]);
-      setActiveTabId(defaultId);
-      navigate("/my-dashboard");
+      programNavigate("/my-dashboard", defaultId);
     }
   };
 
@@ -355,12 +358,18 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
     const restoredTab = { ...lastClosed, id: newId };
 
     setTabs(prev => [...prev, restoredTab]);
-    setActiveTabId(newId);
-    navigate(restoredTab.path);
+    programNavigate(restoredTab.path, newId);
   };
 
   const setTabTitle = (id: string, title: string) => {
     setTabs(prev => prev.map(t => t.id === id ? { ...t, title } : t));
+  };
+
+  const switchToTab = (id: string) => {
+    const tab = tabs.find(t => t.id === id);
+    if (tab) {
+      programNavigate(tab.path, id);
+    }
   };
 
   // Sync URL changes from browser location (e.g. sidebar navigation, back button)
@@ -370,21 +379,66 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
 
     if (currentPath === "/" || currentPath === "/login" || currentPath === "/register") return;
 
-    // Check if the current location is already mapped to the active tab
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    if (activeTab && activeTab.path === currentPath) {
+    if (isSwitchingTabRef.current) {
+      isSwitchingTabRef.current = false;
       return;
     }
 
-    // See if any existing tab has this path
-    const matchingTab = tabs.find(t => t.path === currentPath);
-    if (matchingTab) {
-      setActiveTabId(matchingTab.id);
+    // Normal navigation: update active tab path
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab) {
+      if (activeTab.path !== currentPath) {
+        setTabs(prev => prev.map(t => t.id === activeTabId ? {
+          ...t,
+          path: currentPath,
+          title: getTabTitleFromPath(currentPath)
+        } : t));
+      }
     } else {
-      // Create a new tab
+      // Create a new tab if no active tab found
       openTab(currentPath);
     }
-  }, [location, isTabsEnabled]);
+  }, [location, isTabsEnabled, activeTabId, tabs]);
+
+  // Intercept Middle Click and Ctrl+Click on all internal links to open in a new tab
+  useEffect(() => {
+    if (!isTabsEnabled) return;
+
+    const handleLinkClick = (e: MouseEvent) => {
+      let target = e.target as HTMLElement | null;
+      while (target && target.tagName !== "A") {
+        target = target.parentElement;
+      }
+
+      if (target && target instanceof HTMLAnchorElement) {
+        const href = target.getAttribute("href");
+        if (href) {
+          const isInternal = href.startsWith("/") && 
+                             !href.startsWith("//") && 
+                             !href.startsWith("/api");
+
+          if (isInternal) {
+            const isCtrlClick = e.ctrlKey || e.metaKey || e.shiftKey;
+            const isMiddleClick = e.button === 1;
+
+            if (isCtrlClick || isMiddleClick) {
+              e.preventDefault();
+              e.stopPropagation();
+              openTab(href, { forceNew: true });
+            }
+          }
+        }
+      }
+    };
+
+    document.addEventListener("click", handleLinkClick, true);
+    document.addEventListener("auxclick", handleLinkClick, true);
+
+    return () => {
+      document.removeEventListener("click", handleLinkClick, true);
+      document.removeEventListener("auxclick", handleLinkClick, true);
+    };
+  }, [isTabsEnabled, tabs, activeTabId]);
 
   return (
     <TabWorkspaceContext.Provider value={{
@@ -401,7 +455,8 @@ export function TabWorkspaceProvider({ children }: { children: React.ReactNode }
       duplicateTab,
       reorder,
       reopenClosedTab,
-      setTabTitle
+      setTabTitle,
+      switchToTab
     }}>
       {children}
     </TabWorkspaceContext.Provider>
@@ -416,7 +471,7 @@ export function useCurrentTab() {
 }
 
 export function WorkspaceLayout() {
-  const { isTabsEnabled, tabs, activeTabId, openTab, closeTab, pinTab, unpinTab, duplicateTab, closeOthers, closeAll, reorder } = useWorkspace();
+  const { isTabsEnabled, tabs, activeTabId, openTab, closeTab, pinTab, unpinTab, duplicateTab, closeOthers, closeAll, reorder, switchToTab } = useWorkspace();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -515,7 +570,7 @@ export function WorkspaceLayout() {
                   onContextMenu={(e) => handleContextMenu(e, tab)}
                   onClick={() => {
                     if (tab.id !== activeTabId) {
-                      navigate(tab.path);
+                      switchToTab(tab.id);
                     }
                   }}
                   className={cn(
