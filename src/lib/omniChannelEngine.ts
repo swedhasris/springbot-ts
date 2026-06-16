@@ -20,7 +20,7 @@ export class OmniChannelEngine {
       port: config.smtp_port || parseInt(process.env.SMTP_PORT || '465'),
       secure: (config.smtp_port || parseInt(process.env.SMTP_PORT || '465')) === 465,
       auth: {
-        user: config.smtp_user || process.env.SMTP_USER || 'Support@technosprint.net',
+        user: config.smtp_user || process.env.SMTP_USER || 'info@technosprint.net',
         pass: config.smtp_pass || process.env.SMTP_PASS || '',
       },
       tls: {
@@ -38,7 +38,7 @@ export class OmniChannelEngine {
       port: parseInt(process.env.SMTP_PORT || '465'),
       secure: (process.env.SMTP_PORT || '465') === '465',
       auth: {
-        user: process.env.SMTP_USER || 'Support@technosprint.net',
+        user: process.env.SMTP_USER || 'info@technosprint.net',
         pass: process.env.SMTP_PASS || '',
       },
       tls: {
@@ -400,7 +400,7 @@ export class OmniChannelEngine {
   static async sendEmail(to: string, subject: string, html: string, attachments: any[] = []) {
     try {
       const transporter = this.getTransporter();
-      const fromEmail = process.env.SMTP_USER || 'Support@technosprint.net';
+      const fromEmail = process.env.SMTP_USER || 'info@technosprint.net';
       const fromName = "Technosprint Support";
 
       const mailOptions: any = {

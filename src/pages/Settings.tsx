@@ -303,7 +303,7 @@ export function Settings() {
                   selectedId={selectedSubId}
                   disabled={false}
                   onSelect={(id) => { setSelectedSubId(id); setSelectedSrvId(null); setSelectedGroupId(null); }}
-                  onAdd={() => { setEditingItem({ type: 'Subcategory', data: {} }); setIsModalOpen(true); }}
+                  onAdd={() => { setEditingItem({ type: 'Subcategory', data: { categoryId: selectedCatId || "" } }); setIsModalOpen(true); }}
                   onEdit={(item) => { setEditingItem({ type: 'Subcategory', data: item }); setIsModalOpen(true); }}
                   onDelete={(item) => handleMutation('Subcategory', 'delete', item)}
                   isAdmin={isAdmin}
@@ -315,7 +315,7 @@ export function Settings() {
                   selectedId={selectedSrvId}
                   disabled={false}
                   onSelect={(id) => { setSelectedSrvId(id); setSelectedGroupId(null); }}
-                  onAdd={() => { setEditingItem({ type: 'Service Provider', data: {} }); setIsModalOpen(true); }}
+                  onAdd={() => { setEditingItem({ type: 'Service Provider', data: { subcategoryId: selectedSubId || "" } }); setIsModalOpen(true); }}
                   onEdit={(item) => { setEditingItem({ type: 'Service Provider', data: item }); setIsModalOpen(true); }}
                   onDelete={(item) => handleMutation('Service Provider', 'delete', item)}
                   isAdmin={isAdmin}
@@ -343,7 +343,7 @@ export function Settings() {
                   selectedId={null}
                   disabled={false}
                   onSelect={() => { }}
-                  onAdd={() => { setEditingItem({ type: 'Group Member', data: {} }); setIsModalOpen(true); }}
+                  onAdd={() => { setEditingItem({ type: 'Group Member', data: { groupId: selectedGroupId || "" } }); setIsModalOpen(true); }}
                   onEdit={(item) => { setEditingItem({ type: 'Group Member', data: item }); setIsModalOpen(true); }}
                   onDelete={(item) => handleMutation('Group Member', 'delete', item)}
                   isAdmin={isAdmin}
@@ -607,6 +607,10 @@ export function Settings() {
 
               {editingItem.type === 'Subcategory' && (
                 <>
+                  <Select label="Category" name="categoryId" defaultValue={editingItem.data.categoryId || selectedCatId || ""} required>
+                    <option value="">-- Select Category --</option>
+                    {activeCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
                   <Input label="Sub-Category Name" name="name" defaultValue={editingItem.data.name} required />
                   <Textarea label="Description" name="description" defaultValue={editingItem.data.description} />
                 </>
@@ -614,6 +618,10 @@ export function Settings() {
 
               {editingItem.type === 'Service Provider' && (
                 <>
+                  <Select label="Sub-Category" name="subcategoryId" defaultValue={editingItem.data.subcategoryId || selectedSubId || ""} required>
+                    <option value="">-- Select Sub-Category --</option>
+                    {activeSubcategories.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </Select>
                   <Input label="Provider Name" name="name" defaultValue={editingItem.data.name} required />
                   <Input label="SLA Commitment" name="sla" defaultValue={editingItem.data.sla} placeholder="e.g. 4h, 12h, 1d" required />
                   <Textarea label="Capability Details" name="description" defaultValue={editingItem.data.description} />
@@ -635,6 +643,10 @@ export function Settings() {
 
               {editingItem.type === 'Group Member' && (
                 <>
+                  <Select label="Group" name="groupId" defaultValue={editingItem.data.groupId || selectedGroupId || ""} required>
+                    <option value="">-- Select Group --</option>
+                    {activeGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </Select>
                   <Select label="Select User" name="userId" defaultValue={editingItem.data.userId} required>
                     {allUsers.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
                   </Select>

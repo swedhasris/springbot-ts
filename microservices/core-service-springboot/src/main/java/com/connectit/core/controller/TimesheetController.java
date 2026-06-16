@@ -26,7 +26,7 @@ public class TimesheetController {
     private final JdbcTemplate jdbcTemplate;
     private final com.connectit.core.service.EmailService emailService;
 
-    @Value("${app.mail.from:support@technosprint.net}")
+    @Value("${app.mail.from:info@technosprint.net}")
     private String mailFrom;
 
     @Value("${app.mail.from-name:Technosprint Support}")

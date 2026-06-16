@@ -29,7 +29,7 @@ public class EmailService {
     private final com.connectit.core.repository.UserRepository userRepo;
     private final JdbcTemplate                 jdbcTemplate;
 
-    @Value("${app.mail.from:support@technosprint.net}")
+    @Value("${app.mail.from:info@technosprint.net}")
     private String defaultFrom;
 
     @Value("${app.mail.from-name:Technosprint Support}")

@@ -59,7 +59,7 @@ public class EmailController {
 
     @PostMapping("/email/send-test")
     public ResponseEntity<?> sendTest(@RequestBody Map<String,String> body) {
-        String to = body.getOrDefault("to", "support@technosprint.net");
+        String to = body.getOrDefault("to", "info@technosprint.net");
         emailService.sendAsync(to,
             "[TEST] Ticklora Spring Boot Email Test",
             "<div style='font-family:sans-serif;padding:20px'><h2 style='color:#2563eb'>✅ Spring Boot Email Working</h2>" +

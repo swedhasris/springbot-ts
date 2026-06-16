@@ -19,7 +19,7 @@ if (Test-Path ".env") {
 $tenantId = $env:GRAPH_TENANT_ID
 $clientId = $env:GRAPH_CLIENT_ID
 $clientSecret = $env:GRAPH_CLIENT_SECRET
-$userEmail = if ($env:GRAPH_USER_EMAIL) { $env:GRAPH_USER_EMAIL } else { "support@technosprint.net" }
+$userEmail = if ($env:GRAPH_USER_EMAIL) { $env:GRAPH_USER_EMAIL } else { "info@technosprint.net" }
 
 # Get token with Graph API scope
 $body = @{

@@ -187,7 +187,19 @@ function RichTextToolbar({
   );
 }
 
-/* ─── Notes Editor removed — contentEditable rendered inline to prevent React reconciliation wiping ─── */
+const NotesEditor = React.memo(({ canEdit, editorRef, onInput, onBlur }: any) => {
+  return (
+    <div
+      ref={editorRef}
+      contentEditable={canEdit}
+      onBlur={onBlur}
+      onInput={onInput}
+      className="min-h-[200px] p-3 text-sm outline-none focus:ring-1 focus:ring-inset focus:ring-sn-green bg-card"
+      data-placeholder="Enter notes..."
+      suppressContentEditableWarning
+    />
+  );
+}, (prevProps, nextProps) => prevProps.canEdit === nextProps.canEdit);
 
 /* ════════════════════════════════════════ MAIN ════════════════════════════════════════ */
 export function Timesheet() {
@@ -972,15 +984,12 @@ export function Timesheet() {
                   <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                 </div>
                 <div className="border border-border rounded-lg overflow-hidden">
-                  {/* contentEditable rendered inline — React won't touch DOM children of this div during re-renders */}
-                  <div
-                    ref={editorRef}
-                    contentEditable={canEdit}
+                  {/* NotesEditor component avoids React virtual DOM wiping cursor selection on state updates */}
+                  <NotesEditor
+                    editorRef={editorRef}
+                    canEdit={canEdit}
                     onBlur={handleEditorInput}
                     onInput={handleEditorInput}
-                    className="min-h-[200px] p-3 text-sm outline-none focus:ring-1 focus:ring-inset focus:ring-sn-green bg-card"
-                    data-placeholder="Enter notes..."
-                    suppressContentEditableWarning
                   />
                   <RichTextToolbar
                     editorRef={editorRef}

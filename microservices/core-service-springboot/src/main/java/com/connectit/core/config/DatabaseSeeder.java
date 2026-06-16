@@ -78,6 +78,12 @@ public class DatabaseSeeder implements CommandLineRunner {
         // 5. Seed Default System Settings if empty
         seedDefaultSystemSettings();
 
+        // 6. Seed Service Catalog (categories & subcategories) if empty
+        seedServiceCatalog();
+
+        // 7. Seed Incident Categories if empty
+        seedIncidentCategories();
+
         log.info("[DatabaseSeeder] Database initialization completed successfully.");
     }
 
@@ -323,6 +329,48 @@ public class DatabaseSeeder implements CommandLineRunner {
             }
         } catch (Exception e) {
             log.error("[DatabaseSeeder] Failed to seed system settings: {}", e.getMessage());
+        }
+    }
+
+    private void seedServiceCatalog() {
+        try {
+            List<Map<String, Object>> existingCats = jdbcTemplate.queryForList("SELECT id FROM settings_categories LIMIT 1");
+            if (existingCats.isEmpty()) {
+                log.info("[DatabaseSeeder] Seeding default service catalog (categories & subcategories)...");
+                jdbcTemplate.update("INSERT INTO settings_categories (id, name, description, status, created_by, company_id) VALUES (?, ?, ?, ?, ?, ?)",
+                        "cat_default_1", "IT Support", "IT related hardware, software and access issues", "active", "system", "1");
+                jdbcTemplate.update("INSERT INTO settings_categories (id, name, description, status, created_by, company_id) VALUES (?, ?, ?, ?, ?, ?)",
+                        "cat_default_2", "HR Support", "Human resources, benefits and payroll support", "active", "system", "1");
+
+                jdbcTemplate.update("INSERT INTO settings_subcategories (id, name, description, category_id, status, created_by, company_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "sub_default_1", "Software Issue", "Operating system or application software failure", "cat_default_1", "active", "system", "1");
+                jdbcTemplate.update("INSERT INTO settings_subcategories (id, name, description, category_id, status, created_by, company_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "sub_default_2", "Hardware Issue", "Computer or peripheral hardware malfunction", "cat_default_1", "active", "system", "1");
+                jdbcTemplate.update("INSERT INTO settings_subcategories (id, name, description, category_id, status, created_by, company_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "sub_default_3", "Payroll Inquiry", "Questions regarding salary, tax forms or pay slips", "cat_default_2", "active", "system", "1");
+            }
+        } catch (Exception e) {
+            log.error("[DatabaseSeeder] Failed to seed service catalog: {}", e.getMessage());
+        }
+    }
+
+    private void seedIncidentCategories() {
+        try {
+            List<Map<String, Object>> existing = jdbcTemplate.queryForList("SELECT id FROM incident_categories LIMIT 1");
+            if (existing.isEmpty()) {
+                log.info("[DatabaseSeeder] Seeding default incident categories...");
+                String[] categories = {
+                    "Hardware Issue", "Software Issue", "Network Issue", "System Access",
+                    "Security Issue", "Login Problem", "Email Issue", "Performance Issue",
+                    "Service Request", "Other"
+                };
+                for (String cat : categories) {
+                    jdbcTemplate.update("INSERT INTO incident_categories (name, description, status, created_by) VALUES (?, ?, 'Active', 'system')",
+                            cat, cat + " Category");
+                }
+            }
+        } catch (Exception e) {
+            log.error("[DatabaseSeeder] Failed to seed incident categories: {}", e.getMessage());
         }
     }
 }

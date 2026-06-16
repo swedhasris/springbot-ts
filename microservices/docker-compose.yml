@@ -98,14 +98,14 @@ services:
       SMTP_PORT:            ${SMTP_PORT:-465}
       SMTP_USER:            ${SMTP_USER:-}
       SMTP_PASS:            ${SMTP_PASS:-}
-      M365_SMTP_USER:       ${M365_SMTP_USER:-support@technosprint.net}
+      M365_SMTP_USER:       ${M365_SMTP_USER:-info@technosprint.net}
       M365_SMTP_PASS:       ${M365_SMTP_PASS:-}
-      M365_IMAP_USER:       ${M365_IMAP_USER:-support@technosprint.net}
+      M365_IMAP_USER:       ${M365_IMAP_USER:-info@technosprint.net}
       M365_IMAP_PASS:       ${M365_IMAP_PASS:-}
       GRAPH_TENANT_ID:      ${GRAPH_TENANT_ID:-}
       GRAPH_CLIENT_ID:      ${GRAPH_CLIENT_ID:-}
       GRAPH_CLIENT_SECRET:  ${GRAPH_CLIENT_SECRET:-}
-      GRAPH_USER_EMAIL:     ${GRAPH_USER_EMAIL:-support@technosprint.net}
+      GRAPH_USER_EMAIL:     ${GRAPH_USER_EMAIL:-info@technosprint.net}
       NODE_ENV:             ${NODE_ENV:-production}
     ports:
       - "3002:3002"
