@@ -166,7 +166,7 @@ export function useServiceCatalog() {
     return () => clearInterval(interval);
   }, []);
 
-  return { categories, subcategories, serviceProviders, groups, members };
+  return { categories, subcategories, serviceProviders, groups, members, refresh: fetchAll };
 }
 
 export function getSubcategoriesForCategory(subcategories: SubcategoryItem[], categoryId: string) {

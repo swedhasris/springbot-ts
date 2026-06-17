@@ -90,6 +90,8 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
 
   const sessionIdRef = useRef<string | null>(null);
   const sessionDbIdRef = useRef<string | null>(null);
+  const entriesRef = useRef<ActivityEntry[]>(entries);
+  useEffect(() => { entriesRef.current = entries; }, [entries]);
   const intervalSecRef = useRef(15);
   const screenshotIntervalRef = useRef(screenshotInterval);
   const userRef = useRef(user);
@@ -331,7 +333,7 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
     const userId = userRef.current?.uid || 'anonymous';
     const currentSessionDbId = sessionDbIdRef.current;
 
-    const done = entries.filter(e => !e.isProcessing && !e.isIdle);
+    const done = entriesRef.current.filter(e => !e.isProcessing && !e.isIdle);
     if (done.length > 0) {
       try {
         const res = await fetch('/api/ai/generate-summary', {
@@ -350,7 +352,7 @@ export function ActivityTrackerProvider({ children }: { children: React.ReactNod
         });
       } catch { /* silent */ }
     }
-  }, [isActive, entries]);
+  }, [isActive]);
 
   useEffect(() => () => { watcherRef.current?.stop(); }, []);
   useEffect(() => { watcherRef.current?.updateInterval(screenshotInterval * 1000); }, [screenshotInterval]);

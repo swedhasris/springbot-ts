@@ -33,7 +33,7 @@ const MOCK_TRAFFIC_DATA = [
 export function Settings() {
   const { user, profile } = useAuth();
   const role = profile?.role || 'user';
-  const { categories, subcategories, serviceProviders, groups, members } = useServiceCatalog();
+  const { categories, subcategories, serviceProviders, groups, members, refresh: refreshCatalog } = useServiceCatalog();
 
   const [activeTab, setActiveTab] = useState<"master" | "automation" | "security" | "audit" | "system" | "typography">("master");
   const [loading, setLoading] = useState(false);
@@ -117,63 +117,71 @@ export function Settings() {
     if (!isAdmin) return;
     setLoading(true);
     try {
-      // Map type to exact Firestore collection name
-      const collectionMap: Record<string, string> = {
-        'Category': 'settings_categories',
-        'Subcategory': 'settings_subcategories',
+      // Map type → REST endpoint
+      const endpointMap: Record<string, string> = {
+        'Category':         'settings_categories',
+        'Subcategory':      'settings_subcategories',
         'Service Provider': 'settings_service_providers',
-        'Group': 'settings_groups',
-        'Group Member': 'settings_group_members',
-        'Workflow': 'settings_workflows',
+        'Group':            'settings_groups',
+        'Group Member':     'settings_group_members',
       };
-      const collectionName = collectionMap[type];
-      if (!collectionName) throw new Error(`Unknown type: ${type}`);
+      const endpoint = endpointMap[type];
+      if (!endpoint) throw new Error(`Unknown type: ${type}`);
 
-      let id = data?.id;
+      const id = data?.id;
 
       if (action === 'delete') {
-        if (!confirm("Are you sure? This will mark the item as inactive.")) return;
-        await updateDoc(doc(db, collectionName, id), { status: 'inactive', updatedAt: serverTimestamp() });
-        await createAuditLog(id, type, 'delete', data, { ...data, status: 'inactive' });
-      } else {
-        // Only check for duplicates against CURRENTLY VISIBLE (active) items in UI
-        if (action === 'create') {
-          const visibleItems: any[] =
-            type === 'Category' ? activeCategories :
-              type === 'Subcategory' ? activeSubcategories :
-                type === 'Service Provider' ? activeProviders :
-                  type === 'Group' ? activeGroups :
-                    type === 'Group Member' ? activeMembers : [];
-
-          const nameToCheck = (data.name || "").trim().toLowerCase();
-          const userIdToCheck = data.userId;
-
-          const duplicate = visibleItems.find((item: any) => {
-            if (type === 'Group Member') return item.userId === userIdToCheck;
-            return (item.name || "").trim().toLowerCase() === nameToCheck;
-          });
-
-          if (duplicate) {
-            throw new Error(`A ${type} named "${data.name || data.userName}" already exists.`);
-          }
+        if (!confirm("Are you sure you want to delete this item?")) { setLoading(false); return; }
+        const res = await fetch(`/api/${endpoint}/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Delete failed');
         }
-
-        if (action === 'update') {
-          await updateDoc(doc(db, collectionName, id), { ...data.new, updatedAt: serverTimestamp() });
-          await createAuditLog(id, type, 'update', data.old, data.new);
-        } else if (action === 'create') {
-          const docRef = await addDoc(collection(db, collectionName), {
-            ...data,
-            status: 'active',
-            createdAt: serverTimestamp(),
-            createdBy: user?.email || 'demo'
-          });
-          await createAuditLog(docRef.id, type, 'create', null, data);
+      } else if (action === 'create') {
+        const payload: any = {
+          ...data,
+          status: 'active',
+          createdBy: user?.email || 'admin',
+        };
+        // Ensure proper field names for each type
+        if (type === 'Subcategory') {
+          payload.categoryId = data.categoryId || selectedCatId;
+          if (!payload.categoryId) throw new Error('Please select a Category first.');
+        }
+        if (type === 'Service Provider') {
+          payload.subcategoryId = data.subcategoryId || selectedSubId;
+          if (!payload.subcategoryId) throw new Error('Please select a Sub-Category first.');
+        }
+        if (type === 'Group Member') {
+          payload.groupId = data.groupId || selectedGroupId;
+          if (!payload.groupId) throw new Error('Please select a Group first.');
+        }
+        const res = await fetch(`/api/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Create failed');
+        }
+      } else if (action === 'update') {
+        const res = await fetch(`/api/${endpoint}/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data.new),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Update failed');
         }
       }
+
       setMessage({ text: `${type} saved successfully!`, type: 'success' });
       setIsModalOpen(false);
       setEditingItem(null);
+      // Refresh immediately so the list updates without waiting for the 30s poll
+      await refreshCatalog();
     } catch (err: any) {
       setMessage({ text: err.message, type: 'error' });
     }
@@ -181,12 +189,18 @@ export function Settings() {
     setTimeout(() => setMessage(null), 5000);
   };
 
-  // Filtered views (NOW INDEPENDENT)
+  // Filtered views — each level depends on its parent selection
   const activeCategories = useMemo(() => categories.filter(c => c.status === 'active'), [categories]);
-  const activeSubcategories = useMemo(() => subcategories.filter(s => s.status === 'active'), [subcategories]);
-  const activeProviders = useMemo(() => serviceProviders.filter(p => p.status === 'active'), [serviceProviders]);
+  const activeSubcategories = useMemo(() =>
+    subcategories.filter(s => s.status === 'active' && (!selectedCatId || s.categoryId === selectedCatId)),
+    [subcategories, selectedCatId]);
+  const activeProviders = useMemo(() =>
+    serviceProviders.filter(p => p.status === 'active' && (!selectedSubId || p.subcategoryId === selectedSubId)),
+    [serviceProviders, selectedSubId]);
   const activeGroups = useMemo(() => groups.filter(g => g.status === 'active'), [groups]);
-  const activeMembers = useMemo(() => members.filter(m => m.status === 'active'), [members]);
+  const activeMembers = useMemo(() =>
+    members.filter(m => m.status === 'active' && (!selectedGroupId || m.groupId === selectedGroupId)),
+    [members, selectedGroupId]);
 
   const handleSeedData = async () => {
     if (!isAdmin || !confirm("This will populate demo hierarchy data. Continue?")) return;
@@ -303,24 +317,32 @@ export function Settings() {
                   icon={Radio}
                   items={activeSubcategories}
                   selectedId={selectedSubId}
-                  disabled={false}
+                  disabled={!selectedCatId}
                   onSelect={(id) => { setSelectedSubId(id); setSelectedSrvId(null); setSelectedGroupId(null); }}
-                  onAdd={() => { setEditingItem({ type: 'Subcategory', data: { categoryId: selectedCatId || "" } }); setIsModalOpen(true); }}
+                  onAdd={() => {
+                    if (!selectedCatId) { setMessage({ text: 'Please select a Category first.', type: 'error' }); setTimeout(() => setMessage(null), 3000); return; }
+                    setEditingItem({ type: 'Subcategory', data: { categoryId: selectedCatId } }); setIsModalOpen(true);
+                  }}
                   onEdit={(item) => { setEditingItem({ type: 'Subcategory', data: item }); setIsModalOpen(true); }}
                   onDelete={(item) => handleMutation('Subcategory', 'delete', item)}
                   isAdmin={isAdmin}
+                  parentLabel={selectedCatId ? activeCategories.find(c => c.id === selectedCatId)?.name : undefined}
                 />
                 <MasterColumn
                   title="Providers"
                   icon={Box}
                   items={activeProviders}
                   selectedId={selectedSrvId}
-                  disabled={false}
+                  disabled={!selectedSubId}
                   onSelect={(id) => { setSelectedSrvId(id); setSelectedGroupId(null); }}
-                  onAdd={() => { setEditingItem({ type: 'Service Provider', data: { subcategoryId: selectedSubId || "" } }); setIsModalOpen(true); }}
+                  onAdd={() => {
+                    if (!selectedSubId) { setMessage({ text: 'Please select a Sub-Category first.', type: 'error' }); setTimeout(() => setMessage(null), 3000); return; }
+                    setEditingItem({ type: 'Service Provider', data: { subcategoryId: selectedSubId } }); setIsModalOpen(true);
+                  }}
                   onEdit={(item) => { setEditingItem({ type: 'Service Provider', data: item }); setIsModalOpen(true); }}
                   onDelete={(item) => handleMutation('Service Provider', 'delete', item)}
                   isAdmin={isAdmin}
+                  parentLabel={selectedSubId ? activeSubcategories.find(s => s.id === selectedSubId)?.name : undefined}
                 />
               </div>
 
@@ -343,12 +365,16 @@ export function Settings() {
                   icon={UserPlus}
                   items={activeMembers.map(m => ({ ...m, name: m.userName }))}
                   selectedId={null}
-                  disabled={false}
+                  disabled={!selectedGroupId}
                   onSelect={() => { }}
-                  onAdd={() => { setEditingItem({ type: 'Group Member', data: { groupId: selectedGroupId || "" } }); setIsModalOpen(true); }}
+                  onAdd={() => {
+                    if (!selectedGroupId) { setMessage({ text: 'Please select a Group first.', type: 'error' }); setTimeout(() => setMessage(null), 3000); return; }
+                    setEditingItem({ type: 'Group Member', data: { groupId: selectedGroupId } }); setIsModalOpen(true);
+                  }}
                   onEdit={(item) => { setEditingItem({ type: 'Group Member', data: item }); setIsModalOpen(true); }}
                   onDelete={(item) => handleMutation('Group Member', 'delete', item)}
                   isAdmin={isAdmin}
+                  parentLabel={selectedGroupId ? activeGroups.find(g => g.id === selectedGroupId)?.name : undefined}
                 />
               </div>
             </div>

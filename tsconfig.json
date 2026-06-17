@@ -18,6 +18,18 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "firebase/firestore": [
+        "./src/lib/firestore-fallback.ts"
+      ],
+      "firebase/auth": [
+        "./src/lib/firebase-auth-stub.ts"
+      ],
+      "firebase/app": [
+        "./src/lib/firebase-app-stub.ts"
+      ],
+      "@firebase/firestore": [
+        "./src/lib/firestore-fallback.ts"
       ]
     },
     "allowImportingTsExtensions": true,
