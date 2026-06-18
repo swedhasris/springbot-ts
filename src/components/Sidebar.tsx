@@ -45,6 +45,11 @@ import {
   X,
   PhoneCall,
   BrainCircuit,
+  TimerReset,
+  CalendarClock,
+  CalendarX2,
+  Siren,
+  FileBarChart,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -164,7 +169,7 @@ export function Sidebar() {
         { icon: HelpCircle, label: "Self-Service Portal", path: "/service-portal" },
         { icon: ShoppingCart, label: "Service Catalog", path: "/catalog" },
         { icon: BookOpen, label: "Knowledge Base", path: "/kb" },
-        { icon: Clock, label: "SLA Policies", path: "/sla" },
+        { icon: Clock, label: "SLA Policies", path: "/sla?tab=policies", adminOnly: true },
         { icon: History, label: "System Activity Log", path: "/history" },
       ]
     },
@@ -234,6 +239,18 @@ export function Sidebar() {
       ]
     },
     {
+      label: "SLA Management",
+      adminOnly: true,
+      items: [
+        { icon: LayoutDashboard, label: "SLA Dashboard", path: "/sla?tab=dashboard" },
+        { icon: TimerReset, label: "SLA Policies", path: "/sla?tab=policies" },
+        { icon: CalendarClock, label: "Business Hours", path: "/sla?tab=business-hours" },
+        { icon: CalendarX2, label: "Holiday Calendar", path: "/sla?tab=holiday-calendar" },
+        { icon: Siren, label: "Escalation Rules", path: "/sla?tab=escalation-rules" },
+        { icon: FileBarChart, label: "SLA Reports", path: "/sla?tab=reports" },
+      ]
+    },
+    {
       label: "System Administration",
       adminOnly: true,
       items: [
@@ -273,25 +290,58 @@ export function Sidebar() {
   };
 
   const hasAccess = (item: MenuItem) => {
+    // Check role-based restrictions
     if (item.ultraSuperAdminOnly) return profile?.role === "ultra_super_admin";
     if (item.superAdminOnly) return profile?.role === "super_admin" || profile?.role === "ultra_super_admin";
     if (item.adminOnly) return profile?.role === "admin" || profile?.role === "super_admin" || profile?.role === "ultra_super_admin";
     if (item.agentOrAdminOnly) return ["agent", "admin", "sub_admin", "super_admin", "ultra_super_admin"].includes(profile?.role || "");
+    
+    // Check restricted modules (from AccessControl)
+    if (profile?.role && profile?.restrictedModules) {
+      try {
+        const restrictedModules = JSON.parse(profile.restrictedModules);
+        if (item.path) {
+          // Extract module key from path (e.g., "/tickets" -> "tickets")
+          const pathSegments = item.path.split('/');
+          const moduleKey = pathSegments[1];
+          if (moduleKey && restrictedModules.includes(moduleKey)) {
+            return false;
+          }
+        }
+      } catch (err) {
+        console.error("[Sidebar] Failed to parse restrictedModules:", err);
+      }
+    }
+    
     return true;
   };
 
-  const filteredMenu = filterItems(menuStructure).filter(hasAccess);
+  const applyAccess = (items: MenuItem[]): MenuItem[] => {
+    return items
+      .map(item => {
+        if (!hasAccess(item)) return null;
+        if (item.items) {
+          const visibleSubItems = applyAccess(item.items);
+          if (visibleSubItems.length === 0) return null;
+          return { ...item, items: visibleSubItems };
+        }
+        return item;
+      })
+      .filter(Boolean) as MenuItem[];
+  };
+
+  const filteredMenu = applyAccess(filterItems(menuStructure));
 
   return (
     <aside className={cn(
-      "bg-sn-sidebar text-white flex flex-col sticky top-4 left-4 transition-all duration-300 border border-white/10 rounded-2xl m-4 mr-0 shadow-2xl z-20 overflow-hidden",
+      "sidebar-shell bg-sn-sidebar text-white flex flex-col sticky top-4 left-4 transition-all duration-300 border border-white/10 rounded-2xl m-4 mr-0 shadow-2xl z-20 overflow-hidden",
       isCollapsed ? "w-16" : "w-64",
       "h-[calc(100vh-2rem)]"
     )}>
       {/* Sidebar Header */}
-      <div className="p-4 flex items-center justify-between border-b border-white/10 h-16 shrink-0">
+      <div className="sidebar-header p-4 flex items-center justify-between border-b border-white/10 h-16 shrink-0">
         {!isCollapsed && (
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             {branding.logoBase64 ? (
               <img
                 src={branding.logoBase64}
@@ -318,7 +368,7 @@ export function Sidebar() {
 
       {/* Filter Navigator */}
       {!isCollapsed && (
-        <div className="p-4 shrink-0">
+        <div className="sidebar-search p-4 shrink-0">
           <div className="relative group">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-text-dim group-focus-within:text-blue-500 transition-colors" />
             <input
@@ -333,37 +383,39 @@ export function Sidebar() {
       )}
 
       {/* Navigation Menu */}
-      <nav className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar py-2 px-2 space-y-1">
+      <nav className="sidebar-nav flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar py-2 px-2">
         {filteredMenu.map((section) => (
-          <div key={section.label} className="mb-2">
+          <div key={section.label} className="sidebar-section">
             {!isCollapsed && (
               <button
                 onClick={() => toggleSection(section.label)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-outfit font-black uppercase tracking-widest text-text-dim/70 hover:text-white transition-colors group cursor-pointer"
+                className="sidebar-section-trigger w-full text-[9px] font-outfit font-black uppercase tracking-widest text-text-dim/70 hover:text-white transition-colors group cursor-pointer"
               >
                 <span>{section.label}</span>
                 {expandedSections.includes(section.label) ? (
-                  <ChevronDown className="w-3 h-3 text-blue-500/70 group-hover:text-blue-500" />
+                  <ChevronDown className="sidebar-section-arrow w-3 h-3 text-blue-500/70 group-hover:text-blue-500" />
                 ) : (
-                  <ChevronRight className="w-3 h-3 text-text-dim/50 group-hover:text-white" />
+                  <ChevronRight className="sidebar-section-arrow w-3 h-3 text-text-dim/50 group-hover:text-white" />
                 )}
               </button>
             )}
 
             {(expandedSections.includes(section.label) || isCollapsed || searchQuery) && (
-              <div className="space-y-0.5 mt-1">
+              <div className="sidebar-section-items">
                 {section.items?.map((item) => {
                   const content = (
                     <>
                       {item.icon && (
-                        <item.icon className={cn(
-                          "w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
+                        <span className="sidebar-nav-icon-slot">
+                          <item.icon className={cn(
+                          "sidebar-nav-icon w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
                           isActive(item.path) ? "text-blue-500 drop-shadow-[0_0_8px_rgba(37,99,235,0.6)]" : "text-text-dim group-hover:text-white"
                         )} />
+                        </span>
                       )}
-                      {!isCollapsed && <span className="text-xs truncate flex-grow">{item.label}</span>}
+                      {!isCollapsed && <span className="sidebar-nav-label text-xs truncate flex-grow">{item.label}</span>}
                       {!isCollapsed && item.badge !== undefined && item.badge > 0 && (
-                        <span className="bg-blue-600 text-white text-[10px] font-outfit font-black px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-[0_0_10px_rgba(37,99,235,0.3)]">
+                        <span className="sidebar-nav-badge bg-blue-600 text-white text-[10px] font-outfit font-black px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-[0_0_10px_rgba(37,99,235,0.3)]">
                           {item.badge}
                         </span>
                       )}
@@ -382,8 +434,8 @@ export function Sidebar() {
                         key={item.label}
                         onClick={item.onClick}
                         className={cn(
-                          "w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all relative group cursor-pointer text-left",
-                          "text-text-dim hover:bg-white/5 hover:text-white"
+                          "sidebar-nav-item w-full rounded-xl transition-all relative group cursor-pointer text-left text-text-dim hover:bg-white/5 hover:text-white",
+                          isCollapsed && "sidebar-nav-item-collapsed"
                         )}
                       >
                         {content}
@@ -420,9 +472,10 @@ export function Sidebar() {
                         }
                       }}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-xl transition-all relative group cursor-pointer",
+                        "sidebar-nav-item rounded-xl transition-all relative group cursor-pointer",
+                        isCollapsed && "sidebar-nav-item-collapsed",
                         isActive(item.path)
-                          ? "bg-blue-500/10 text-blue-500 dark:text-blue-400 border-r border-blue-500 shadow-[inset_0_0_12px_rgba(37,99,235,0.1)] font-semibold"
+                          ? "is-active bg-blue-500/10 text-blue-500 dark:text-blue-400 shadow-[inset_0_0_12px_rgba(37,99,235,0.1)] font-semibold"
                           : "text-text-dim hover:bg-white/5 hover:text-white"
                       )}
                     >
@@ -437,36 +490,42 @@ export function Sidebar() {
       </nav>
 
       {/* Sidebar Footer */}
-      <div className="p-3 border-t border-white/10 space-y-1.5 shrink-0 bg-black/20">
+      <div className="sidebar-footer p-3 border-t border-white/10 space-y-1.5 shrink-0 bg-black/20">
         <button
           onClick={() => setTheme(isDarkMode ? "light" : "dark")}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 w-full text-text-dim hover:text-white transition-all duration-200 rounded-xl hover:bg-white/5 cursor-pointer text-xs",
-            isCollapsed && "justify-center px-0"
+            "sidebar-footer-item w-full text-text-dim hover:text-white transition-all duration-200 rounded-xl hover:bg-white/5 cursor-pointer text-xs",
+            isCollapsed && "sidebar-footer-item-collapsed"
           )}
         >
-          {isDarkMode ? <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" /> : <Moon className="w-4 h-4 text-blue-500" />}
-          {!isCollapsed && <span>{isDarkMode ? "Light Spectrum" : "Dark Cyber Mode"}</span>}
+          <span className="sidebar-nav-icon-slot">
+            {isDarkMode ? <Sun className="sidebar-nav-icon w-4 h-4 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" /> : <Moon className="sidebar-nav-icon w-4 h-4 text-blue-500" />}
+          </span>
+          {!isCollapsed && <span className="sidebar-nav-label">{isDarkMode ? "Light Spectrum" : "Dark Cyber Mode"}</span>}
         </button>
         <button
           onClick={() => setShowResetModal(true)}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 w-full text-text-dim hover:text-blue-400 transition-all duration-200 rounded-xl hover:bg-white/5 cursor-pointer text-xs",
-            isCollapsed && "justify-center px-0"
+            "sidebar-footer-item w-full text-text-dim hover:text-blue-400 transition-all duration-200 rounded-xl hover:bg-white/5 cursor-pointer text-xs",
+            isCollapsed && "sidebar-footer-item-collapsed"
           )}
         >
-          <Lock className="w-4 h-4" />
-          {!isCollapsed && <span>Reset Password</span>}
+          <span className="sidebar-nav-icon-slot">
+            <Lock className="sidebar-nav-icon w-4 h-4" />
+          </span>
+          {!isCollapsed && <span className="sidebar-nav-label">Reset Password</span>}
         </button>
         <button
           onClick={() => signOut()}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 w-full text-text-dim hover:text-red-400 transition-all duration-200 rounded-xl hover:bg-white/5 cursor-pointer text-xs",
-            isCollapsed && "justify-center px-0"
+            "sidebar-footer-item w-full text-text-dim hover:text-red-400 transition-all duration-200 rounded-xl hover:bg-white/5 cursor-pointer text-xs",
+            isCollapsed && "sidebar-footer-item-collapsed"
           )}
         >
-          <LogOut className="w-4 h-4" />
-          {!isCollapsed && <span>System Logout</span>}
+          <span className="sidebar-nav-icon-slot">
+            <LogOut className="sidebar-nav-icon w-4 h-4" />
+          </span>
+          {!isCollapsed && <span className="sidebar-nav-label">System Logout</span>}
         </button>
       </div>
 

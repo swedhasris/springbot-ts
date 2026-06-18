@@ -232,6 +232,11 @@
   backdrop-filter: blur(20px);
   border-color: rgba(37, 99, 235, 0.15) !important;
   color: var(--color-foreground) !important;
+  --sidebar-item-height: 2.5rem;
+  --sidebar-item-x: 0.75rem;
+  --sidebar-item-gap: 0.75rem;
+  --sidebar-icon-size: 1rem;
+  --sidebar-section-gap: 0.5rem;
 }
 
 .dark .bg-sn-sidebar {
@@ -268,68 +273,155 @@
 }
 
 /* Sidebar Section Headings (Favorites, Incident, Meetings, etc.) */
-.bg-sn-sidebar nav button {
+.bg-sn-sidebar .sidebar-section-trigger {
   color: #1e3a8a !important;
   /* Deep corporate blue */
   opacity: 0.9 !important;
   font-weight: 700 !important;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0.75rem;
+  align-items: center;
+  column-gap: 0.75rem;
+  min-height: 1.75rem;
+  width: 100%;
+  padding: 0.125rem var(--sidebar-item-x);
+  margin: 0;
+  text-align: left;
 }
 
-.bg-sn-sidebar nav button:hover {
+.bg-sn-sidebar .sidebar-section-trigger:hover {
   color: #1d4ed8 !important;
   opacity: 1 !important;
 }
 
-.dark .bg-sn-sidebar nav button {
+.dark .bg-sn-sidebar .sidebar-section-trigger {
   color: #60a5fa !important;
   /* Light blue */
   opacity: 0.9 !important;
   font-weight: 700 !important;
 }
 
-.dark .bg-sn-sidebar nav button:hover {
+.dark .bg-sn-sidebar .sidebar-section-trigger:hover {
   color: #93c5fd !important;
   opacity: 1 !important;
 }
 
+.bg-sn-sidebar .sidebar-section-arrow {
+  justify-self: end;
+  flex: none;
+}
+
+.bg-sn-sidebar .sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sidebar-section-gap);
+}
+
+.bg-sn-sidebar .sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.bg-sn-sidebar .sidebar-section-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.bg-sn-sidebar .sidebar-nav-item,
+.bg-sn-sidebar .sidebar-footer-item {
+  position: relative;
+  min-height: var(--sidebar-item-height);
+  width: 100%;
+  padding: 0.5rem var(--sidebar-item-x);
+  display: grid;
+  grid-template-columns: var(--sidebar-icon-size) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sidebar-item-gap);
+  text-align: left;
+}
+
+.bg-sn-sidebar .sidebar-nav-item-collapsed,
+.bg-sn-sidebar .sidebar-footer-item-collapsed {
+  grid-template-columns: var(--sidebar-icon-size);
+  justify-content: center;
+  justify-items: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.bg-sn-sidebar .sidebar-nav-icon-slot {
+  width: var(--sidebar-icon-size);
+  min-width: var(--sidebar-icon-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bg-sn-sidebar .sidebar-nav-icon {
+  width: var(--sidebar-icon-size);
+  height: var(--sidebar-icon-size);
+}
+
+.bg-sn-sidebar .sidebar-nav-label {
+  min-width: 0;
+  line-height: 1.2;
+  align-self: center;
+}
+
+.bg-sn-sidebar .sidebar-nav-badge {
+  justify-self: end;
+  align-self: center;
+}
+
 /* Active links in Sidebar */
-.bg-sn-sidebar a.text-blue-500,
-.bg-sn-sidebar a.text-blue-400,
-.bg-sn-sidebar a[class*="bg-blue-500/"] {
+.bg-sn-sidebar .sidebar-nav-item.is-active {
   color: #1e3a8a !important;
   /* Deep Indigo-Blue in Light Mode */
   background-color: rgba(37, 99, 235, 0.12) !important;
-  border-right: 3px solid #2563eb !important;
   font-weight: 700 !important;
 }
 
-.bg-sn-sidebar a.text-blue-500 svg,
-.bg-sn-sidebar a.text-blue-400 svg {
+.bg-sn-sidebar .sidebar-nav-item.is-active::after {
+  content: "";
+  position: absolute;
+  top: 0.4rem;
+  right: 0;
+  bottom: 0.4rem;
+  width: 3px;
+  border-radius: 9999px;
+  background-color: #2563eb;
+}
+
+.bg-sn-sidebar .sidebar-nav-item.is-active svg {
   color: #2563eb !important;
 }
 
-.dark .bg-sn-sidebar a.text-blue-500,
-.dark .bg-sn-sidebar a.text-blue-400,
-.dark .bg-sn-sidebar a[class*="bg-blue-500/"] {
+.dark .bg-sn-sidebar .sidebar-nav-item.is-active {
   color: #ffffff !important;
   /* Crisp high contrast white active state */
   background-color: rgba(59, 130, 246, 0.2) !important;
-  border-right: 3px solid #3b82f6 !important;
   font-weight: 700 !important;
 }
 
-.dark .bg-sn-sidebar a.text-blue-500 svg,
-.dark .bg-sn-sidebar a.text-blue-400 svg {
+.dark .bg-sn-sidebar .sidebar-nav-item.is-active::after {
+  background-color: #3b82f6;
+}
+
+.dark .bg-sn-sidebar .sidebar-nav-item.is-active svg {
   color: #60a5fa !important;
 }
 
 /* Hover links in Sidebar */
-.bg-sn-sidebar a:hover {
+.bg-sn-sidebar .sidebar-nav-item:hover,
+.bg-sn-sidebar .sidebar-footer-item:hover {
   background-color: rgba(37, 99, 235, 0.08) !important;
   color: #1d4ed8 !important;
 }
 
-.dark .bg-sn-sidebar a:hover {
+.dark .bg-sn-sidebar .sidebar-nav-item:hover,
+.dark .bg-sn-sidebar .sidebar-footer-item:hover {
   background-color: rgba(255, 255, 255, 0.05) !important;
   color: #ffffff !important;
 }
