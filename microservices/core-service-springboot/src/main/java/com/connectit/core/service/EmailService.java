@@ -592,6 +592,9 @@ public class EmailService {
     @Value("${graph.client-secret:}")
     private String graphClientSecret;
 
+    @Value("${graph.user-email:info@technosprint.net}")
+    private String graphUserEmail;
+
     private boolean isOffice365Host(String host) {
         return host != null && (
             host.contains("office365.com") ||
@@ -634,7 +637,7 @@ public class EmailService {
         impl.setHost(host);
         impl.setPort(port);
 
-        boolean useOAuth = isOffice365Host(host);
+        boolean useOAuth = false; // Disable OAuth for SMTP as client credentials are not supported for SMTP AUTH XOAUTH2
         if (useOAuth) {
             try {
                 String token = getOAuth2AccessToken();
@@ -695,6 +698,22 @@ public class EmailService {
     }
 
     private String sendMail(CompanyEmailConfig cfg, String to, String subject, String html, String ticketNumber, String inReplyTo, String references) throws Exception {
+        // Check if Microsoft Graph API outbound email sending is configured
+        boolean graphConfigured = graphTenantId != null && !graphTenantId.isBlank()
+            && graphClientId != null && !graphClientId.isBlank()
+            && graphClientSecret != null && !graphClientSecret.isBlank();
+
+        if (graphConfigured) {
+            log.info("[GraphAPI] Attempting outbound email send via Microsoft Graph API for user: {}", graphUserEmail);
+            try {
+                String messageId = sendMailViaGraphInternal(to, subject, html, ticketNumber, inReplyTo, references);
+                log.info("[GraphAPI] Outbound success. Sender: {}, Recipient: {}, Message-ID: {}", graphUserEmail, to, messageId);
+                return messageId;
+            } catch (Exception e) {
+                log.error("[GraphAPI] Outbound failed, falling back to SMTP. Error: {}", e.getMessage(), e);
+            }
+        }
+
         // ═══════════════════════════════════════════════════════════════════════
         // CRITICAL: ALL outbound emails MUST be sent from info@technosprint.net
         // We ALWAYS use the default Spring Mail sender (configured in application.properties)
@@ -890,5 +909,121 @@ public class EmailService {
             "<div style='padding:32px;color:#334155;line-height:1.6;font-size:14px;'>" + body + "</div>" +
             "<div style='padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center'>" +
             footer + "</div></div></body></html>";
+    }
+
+    private String sendMailViaGraphInternal(String to, String subject, String html, String ticketNumber, String inReplyTo, String references) throws Exception {
+        String accessToken = getGraphAccessTokenForSending();
+        String userEmail = graphUserEmail != null && !graphUserEmail.isBlank() ? graphUserEmail : defaultFrom;
+        
+        String url = "https://graph.microsoft.com/v1.0/users/" + java.net.URLEncoder.encode(userEmail, java.nio.charset.StandardCharsets.UTF_8) + "/sendMail";
+        
+        // Generate Message-ID
+        String cleanDomain = "technosprint.net";
+        String messageId = "<" + UUID.randomUUID().toString() + "@" + cleanDomain + ">";
+
+        // Construct JSON Payload
+        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> message = new HashMap<>();
+
+        message.put("subject", subject);
+
+        Map<String, String> body = new HashMap<>();
+        body.put("contentType", "HTML");
+        body.put("content", html);
+        message.put("body", body);
+
+        List<Map<String, Object>> toRecipients = new ArrayList<>();
+        Map<String, Object> recipient = new HashMap<>();
+        Map<String, String> emailAddress = new HashMap<>();
+        emailAddress.put("address", to);
+        recipient.put("emailAddress", emailAddress);
+        toRecipients.add(recipient);
+        message.put("toRecipients", toRecipients);
+
+        List<Map<String, String>> headersList = new ArrayList<>();
+
+        if (ticketNumber != null) {
+            Map<String, String> header = new HashMap<>();
+            header.put("name", "X-Ticket-Number");
+            header.put("value", ticketNumber);
+            headersList.add(header);
+        }
+
+        if (inReplyTo != null && !inReplyTo.isBlank()) {
+            Map<String, String> header = new HashMap<>();
+            header.put("name", "X-In-Reply-To");
+            header.put("value", inReplyTo);
+            headersList.add(header);
+        }
+
+        if (references != null && !references.isBlank()) {
+            Map<String, String> header = new HashMap<>();
+            header.put("name", "X-References");
+            header.put("value", references);
+            headersList.add(header);
+        }
+
+        Map<String, String> msgIdHeader = new HashMap<>();
+        msgIdHeader.put("name", "X-Message-ID");
+        msgIdHeader.put("value", messageId);
+        headersList.add(msgIdHeader);
+
+        message.put("internetMessageHeaders", headersList);
+        payload.put("message", message);
+        payload.put("saveToSentItems", "true");
+
+        String jsonPayload = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload);
+
+        java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+            .uri(java.net.URI.create(url))
+            .header("Authorization", "Bearer " + accessToken)
+            .header("Content-Type", "application/json")
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(jsonPayload))
+            .build();
+
+        java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new RuntimeException("Microsoft Graph API sendMail failed (HTTP " + response.statusCode() + "): " + response.body());
+        }
+
+        return messageId;
+    }
+
+    private String getGraphAccessTokenForSending() throws Exception {
+        if (graphTenantId == null || graphTenantId.isBlank()
+            || graphClientId == null || graphClientId.isBlank()
+            || graphClientSecret == null || graphClientSecret.isBlank()) {
+            throw new IllegalStateException("Microsoft Graph OAuth2 credentials (tenant-id, client-id, client-secret) are not configured");
+        }
+
+        String tokenUrl = "https://login.microsoftonline.com/" + graphTenantId + "/oauth2/v2.0/token";
+        String body = "client_id=" + java.net.URLEncoder.encode(graphClientId, java.nio.charset.StandardCharsets.UTF_8)
+            + "&client_secret=" + java.net.URLEncoder.encode(graphClientSecret, java.nio.charset.StandardCharsets.UTF_8)
+            + "&scope=" + java.net.URLEncoder.encode("https://graph.microsoft.com/.default", java.nio.charset.StandardCharsets.UTF_8)
+            + "&grant_type=client_credentials";
+
+        java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+            .uri(java.net.URI.create(tokenUrl))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
+            .build();
+
+        java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("OAuth2 token request failed (HTTP " + response.statusCode() + "): " + response.body());
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tokenResponse = new com.fasterxml.jackson.databind.ObjectMapper().readValue(response.body(), Map.class);
+        String accessToken = (String) tokenResponse.get("access_token");
+        if (accessToken == null || accessToken.isBlank()) {
+            throw new RuntimeException("No access_token in OAuth2 response");
+        }
+
+        return accessToken;
     }
 }

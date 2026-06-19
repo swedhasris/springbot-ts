@@ -13,6 +13,7 @@ const TimesheetReports = lazy(() => import("../pages/TimesheetReports").then(m =
 const TicketDetail = lazy(() => import("../pages/TicketDetail").then(m => ({ default: m.TicketDetail })));
 const GlobalHistory = lazy(() => import("../pages/GlobalHistory").then(m => ({ default: m.GlobalHistory })));
 const SLAManagement = lazy(() => import("../pages/SLAManagement").then(m => ({ default: m.SLAManagement })));
+const SLAManagementPremium = lazy(() => import("../pages/SLAManagementPremium").then(m => ({ default: m.SLAManagementPremium })));
 const Approvals = lazy(() => import("../pages/Approvals").then(m => ({ default: m.Approvals })));
 const Users = lazy(() => import("../pages/Users").then(m => ({ default: m.Users })));
 const Reports = lazy(() => import("../pages/Reports").then(m => ({ default: m.Reports })));
@@ -69,6 +70,8 @@ function resolveComponent(path: string): React.ReactNode {
       return <GlobalHistory />;
     case "/sla":
       return <SLAManagement />;
+    case "/sla-management":
+      return <SLAManagementPremium />;
     case "/approvals":
       return <Approvals />;
     case "/users":

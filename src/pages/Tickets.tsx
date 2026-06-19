@@ -348,6 +348,42 @@ export function Tickets() {
     return "4 - Low";
   };
 
+  const getTicketsBreachRisk = (ticket: any) => {
+    if (!ticket || ticket.status === "Resolved" || ticket.status === "Closed" || ticket.status === "Canceled") return null;
+
+    const deadlineStr = ticket.resolutionDeadline || ticket.resolution_deadline;
+    if (!deadlineStr) return null;
+
+    const deadline = new Date(deadlineStr).getTime();
+    const now = Date.now();
+    const createdTimeMs = ticket.createdAt?.seconds 
+      ? ticket.createdAt.seconds * 1000 
+      : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
+
+    if (now >= deadline) return { risk: "breached", score: 100, label: "Breached" };
+
+    const totalTime = deadline - createdTimeMs;
+    const timeElapsed = now - createdTimeMs;
+    const ratio = totalTime > 0 ? timeElapsed / totalTime : 0;
+
+    const workloadFactor = ticket.assignedTo ? 1.1 : 1.25;
+
+    const categoryMultipliers: Record<string, number> = {
+      "Network": 1.2,
+      "Database": 1.15,
+      "Software": 1.1,
+      "Hardware": 1.05
+    };
+    const catMultiplier = categoryMultipliers[ticket.category || ""] || 1.0;
+
+    const rawScore = ratio * 100 * workloadFactor * catMultiplier;
+    const score = Math.min(99, Math.round(rawScore));
+
+    if (score > 80) return { risk: "high", score, label: "High Risk" };
+    if (score > 55) return { risk: "medium", score, label: "Medium Risk" };
+    return { risk: "low", score, label: "Low Risk" };
+  };
+
   const getFeaturePermission = (featureId: string) => ({
     ...DEFAULT_COMPANY_FEATURE_PERMISSION,
     ...(companyFeaturePermissions[featureId] || {}),
@@ -897,6 +933,27 @@ export function Tickets() {
                       </span>
                     </div>
 
+                    {/* AI Breach Predictor Badge */}
+                    {(() => {
+                      const risk = getTicketsBreachRisk(ticket);
+                      if (!risk) return null;
+                      return (
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">AI Breach Copilot</span>
+                          <span className={cn(
+                            "text-[9px] uppercase tracking-widest font-black px-2 py-0.5 rounded border transition-all duration-300",
+                            risk.risk === "high" 
+                              ? "bg-red-500/10 text-red-500 border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.15)] animate-pulse"
+                              : risk.risk === "medium"
+                                ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                                : "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                          )}>
+                            ⚠️ {risk.score}% Risk
+                          </span>
+                        </div>
+                      );
+                    })()}
+
                     <Link to={`/tickets/${ticket.id}`} className="block hover:underline">
                       <h4 className="font-outfit font-bold text-sm text-foreground line-clamp-2 mb-2 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" title={ticket.title}>
                         {ticket.title}
@@ -1034,9 +1091,27 @@ export function Tickets() {
                       <td className="p-3 text-xs font-medium text-foreground max-w-[180px] truncate" title={ticket.title}>{ticket.title}</td>
                       <td className="p-3 text-xs text-muted-foreground truncate max-w-[110px]">{ticket.caller}</td>
                       <td className="p-3">
-                        <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider", priorityBadge)}>
-                          {p}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider", priorityBadge)}>
+                            {p}
+                          </span>
+                          {(() => {
+                            const risk = getTicketsBreachRisk(ticket);
+                            if (!risk) return null;
+                            return (
+                              <span className={cn(
+                                "text-[8px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded border transition-all duration-300",
+                                risk.risk === "high" 
+                                  ? "bg-red-500/10 text-red-500 border-red-500/20 shadow-[0_0_8px_rgba(239,68,68,0.15)] animate-pulse"
+                                  : risk.risk === "medium"
+                                    ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                    : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                              )}>
+                                ⚠️ {risk.score}% Risk
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </td>
                       <td className="p-3 text-xs font-semibold">{ticket.status}</td>
                       <td className="p-3 text-xs text-muted-foreground">

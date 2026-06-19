@@ -270,6 +270,8 @@ function mapDbTicketToFrontend(t: any): any {
     total_paused_time: t.total_paused_time ?? t.totalPausedTime ?? 0,
     onHoldStart: t.on_hold_start || t.onHoldStart || null,
     on_hold_start: t.on_hold_start || t.onHoldStart || null,
+    onHoldReason: t.on_hold_reason || t.onHoldReason || "",
+    on_hold_reason: t.on_hold_reason || t.onHoldReason || "",
     points: t.points ?? 0,
     slaDelayMeta: parseSlaDelayMeta(t.sla_delay_meta_json || t.slaDelayMeta),
     slaDelayLogs: parseSlaDelayLogs(t.sla_delay_logs_json || t.slaDelayLogs),
@@ -364,12 +366,9 @@ async function fetchFallbackData(path: string, queryObj?: any): Promise<any[]> {
         if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
         result = await res.json();
       } else if (path === "sla_policies") {
-        result = [
-          { id: "p1", name: "P1 SLA", priority: "1 - Critical", category: "", resolutionTimeMinutes: 240, isActive: true },
-          { id: "p2", name: "P2 SLA", priority: "2 - High", category: "", resolutionTimeMinutes: 480, isActive: true },
-          { id: "p3", name: "P3 SLA", priority: "3 - Moderate", category: "", resolutionTimeMinutes: 1440, isActive: true },
-          { id: "p4", name: "P4 SLA", priority: "4 - Low", category: "", resolutionTimeMinutes: 4320, isActive: true },
-        ];
+        const res = await fetch("/api/sla/policies");
+        if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+        result = await res.json();
       } else if (path === "company_feature_permissions") {
         let companyId = "";
         if (queryObj && queryObj.clauses) {
@@ -623,6 +622,18 @@ export async function addDoc(collectionRef: any, data: any): Promise<any> {
     }
   }
 
+  if (path === "sla_policies") {
+    const res = await fetch("/api/sla/policies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      const created = await res.json();
+      return { id: String(created.id || Date.now()) };
+    }
+  }
+
   // Generic collections — persist to any supported API endpoint
   try {
     const res = await fetch(`/api/${path}`, {
@@ -675,6 +686,16 @@ export async function updateDoc(docRef: any, data: any): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    return;
+  }
+
+  if (path === "sla_policies") {
+    const res = await fetch(`/api/sla/policies/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error("Failed to update SLA policy");
     return;
   }
 
@@ -850,6 +871,12 @@ export async function deleteDoc(docRef: any): Promise<void> {
 
   if (path === "settings_groups") {
     await fetch(`/api/settings_groups/${id}`, { method: "DELETE" });
+    return;
+  }
+
+  if (path === "sla_policies") {
+    const res = await fetch(`/api/sla/policies/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Failed to delete SLA policy");
     return;
   }
 

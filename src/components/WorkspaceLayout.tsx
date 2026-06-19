@@ -40,6 +40,7 @@ function getModuleKeyForPath(path: string): string | null {
   if (cleanPath === "/forecasting-planning") return "reports";
   if (cleanPath === "/data-analytics") return "reports";
   if (cleanPath === "/sla") return "sla";
+  if (cleanPath === "/sla-management") return "sla";
   if (cleanPath === "/users") return "users";
   if (cleanPath === "/settings") return "settings";
   if (cleanPath === "/branding") return "settings";
@@ -124,6 +125,7 @@ function getTabTitleFromPath(path: string): string {
   }
   if (cleanPath === "/history") return "System Activity Log";
   if (cleanPath === "/sla") return "SLA Policies";
+  if (cleanPath === "/sla-management") return "SLA Management";
   if (cleanPath === "/approvals") return "Ticket Approvals";
   if (cleanPath === "/users") return "User Management";
   if (cleanPath === "/incident-categories") return "Incident Categories";
@@ -177,6 +179,7 @@ function getTabIconFromPath(path: string) {
   if (cleanPath === "/dashboard") return BarChart3;
   if (cleanPath.startsWith("/tickets")) return Ticket;
   if (cleanPath === "/sla") return Clock;
+  if (cleanPath === "/sla-management") return Clock;
   if (cleanPath === "/approvals") return CheckCircle2;
   if (cleanPath === "/users") return Users;
   if (cleanPath.startsWith("/timesheet")) return ClipboardList;

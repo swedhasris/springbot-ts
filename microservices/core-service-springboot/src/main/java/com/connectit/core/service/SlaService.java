@@ -17,7 +17,7 @@ public class SlaService {
     private final TicketActivityRepository activityRepo;
 
     public List<SLAPolicy> getAllPolicies() {
-        return policyRepo.findByIsActiveTrueOrderByPriorityAsc();
+        return policyRepo.findAllByOrderByPriorityAsc();
     }
 
     public SLAPolicy save(SLAPolicy policy) {

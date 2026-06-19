@@ -7,5 +7,6 @@ import java.util.Optional;
 @Repository
 public interface SLAPolicyRepository extends JpaRepository<SLAPolicy, Long> {
     List<SLAPolicy> findByIsActiveTrueOrderByPriorityAsc();
+    List<SLAPolicy> findAllByOrderByPriorityAsc();
     Optional<SLAPolicy> findFirstByPriorityAndIsActiveTrue(String priority);
 }

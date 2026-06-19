@@ -268,13 +268,19 @@ export function TicketDetail() {
       }
     }
 
+    const isPaused = editedTicket.status === "On Hold" || editedTicket.status === "Waiting for Customer" || editedTicket.status === "Awaiting User" || editedTicket.status === "Awaiting Vendor";
+    if (isPaused && (!editedTicket.onHoldReason || editedTicket.onHoldReason.trim() === "")) {
+      alert("Please select a Pause Reason before putting the ticket in a paused state.");
+      return;
+    }
+
     setIsUpdating(true);
 
 
 
     try {
       const historyEntries: any[] = [];
-      const fields = ["incidentCategory", "incident_category", "category", "categoryId", "subcategory", "subcategoryId", "service", "serviceId", "serviceProvider", "status", "impact", "urgency", "assignmentGroup", "title", "description", "assignedTo", "affectedUser", "resolutionCode", "resolutionNotes", "resolutionMethod", "closureReason", "watchList", "workNotesList", "businessPhone", "location", "configurationItem", "computerName", "knowledgeArticleUsed", "originalAssignmentGroup", "acknowledged", "passwordReset", "rackspaceTicketNo", "additionalInformation"];
+      const fields = ["incidentCategory", "incident_category", "category", "categoryId", "subcategory", "subcategoryId", "service", "serviceId", "serviceProvider", "status", "onHoldReason", "impact", "urgency", "assignmentGroup", "title", "description", "assignedTo", "affectedUser", "resolutionCode", "resolutionNotes", "resolutionMethod", "closureReason", "watchList", "workNotesList", "businessPhone", "location", "configurationItem", "computerName", "knowledgeArticleUsed", "originalAssignmentGroup", "acknowledged", "passwordReset", "rackspaceTicketNo", "additionalInformation"];
 
       fields.forEach(field => {
         if (editedTicket[field] !== (ticket[field] || "")) {
@@ -363,6 +369,7 @@ export function TicketDetail() {
 
         if (isPaused && !isResolved) {
           updates.onHoldStart = new Date().toISOString();
+          updates.onHoldReason = editedTicket.onHoldReason || "";
         } else if ((ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor") && !isPaused) {
           const onHoldStartStr = ticket.onHoldStart || new Date().toISOString();
           const onHoldStart = new Date(onHoldStartStr).getTime();
@@ -372,6 +379,7 @@ export function TicketDetail() {
           const totalPaused = (Number(ticket.totalPausedTime) || 0) + pauseDuration;
           updates.totalPausedTime = totalPaused;
           updates.onHoldStart = null;
+          updates.onHoldReason = null;
 
           if (ticket.resolutionDeadline) {
             const oldRes = new Date(ticket.resolutionDeadline).getTime();
@@ -980,6 +988,44 @@ export function TicketDetail() {
       excludeHolidays: ticket.excludeHolidays
     }).toISOString() : undefined);
 
+  const getAiBreachRisk = () => {
+    if (!ticket || ticket.status === "Resolved" || ticket.status === "Closed") return null;
+
+    const deadlineStr = ticket.resolutionDeadline;
+    if (!deadlineStr) return null;
+
+    const deadline = new Date(deadlineStr).getTime();
+    const now = Date.now();
+    const createdTimeMs = ticket.createdAt?.seconds 
+      ? ticket.createdAt.seconds * 1000 
+      : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
+
+    if (now >= deadline) return { risk: "breached", score: 100, label: "Breached" };
+
+    const totalTime = deadline - createdTimeMs;
+    const timeElapsed = now - createdTimeMs;
+    const ratio = totalTime > 0 ? timeElapsed / totalTime : 0;
+
+    const workloadFactor = ticket.assignedTo ? 1.1 : 1.25;
+
+    const categoryMultipliers: Record<string, number> = {
+      "Network": 1.2,
+      "Database": 1.15,
+      "Software": 1.1,
+      "Hardware": 1.05
+    };
+    const catMultiplier = categoryMultipliers[ticket.category || ""] || 1.0;
+
+    const rawScore = ratio * 100 * workloadFactor * catMultiplier;
+    const score = Math.min(99, Math.round(rawScore));
+
+    if (score > 80) return { risk: "high", score, label: "High Risk (AI Predicted)" };
+    if (score > 55) return { risk: "medium", score, label: "Medium Risk (AI Predicted)" };
+    return { risk: "low", score, label: "Low Risk" };
+  };
+
+  const breachRisk = getAiBreachRisk();
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -1022,6 +1068,21 @@ export function TicketDetail() {
             />
           </div>
           <div className="flex items-center gap-2">
+            {/* AI Breach Risk Predictor Badge */}
+            {breachRisk && (
+              <div className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all duration-300",
+                breachRisk.risk === "high" 
+                  ? "bg-red-500/10 text-red-500 border-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.2)] animate-pulse"
+                  : breachRisk.risk === "medium"
+                    ? "bg-amber-500/10 text-amber-500 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+                    : "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+              )}>
+                <ShieldAlert className="w-3.5 h-3.5 animate-bounce" />
+                <span>{breachRisk.score}% Breach Risk ({breachRisk.label})</span>
+              </div>
+            )}
+            
             {/* AI Status Message */}
             {aiStatusMessage && (
               <div className="mr-4 flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
@@ -1417,6 +1478,33 @@ export function TicketDetail() {
                 </select>
               </div>
 
+              {/* Pause Reason Selector */}
+              {(["On Hold", "Awaiting User", "Awaiting Vendor"].includes(editedTicket?.status || "") || ticket?.onHoldReason) && (
+                <div className="grid grid-cols-3 items-center gap-4 animate-in fade-in duration-200">
+                  <label className="text-[11px] text-right font-semibold text-amber-500 uppercase leading-tight flex items-center justify-end gap-1">
+                    <span className="text-amber-500">*</span> Pause Reason
+                  </label>
+                  <select
+                    disabled={!canEdit}
+                    value={editedTicket?.onHoldReason || ticket?.onHoldReason || ""}
+                    onChange={(e) => updateLocalField("onHoldReason", e.target.value)}
+                    className={cn(
+                      "col-span-2 p-1.5 border rounded text-xs outline-none h-8 transition-colors",
+                      canEdit
+                        ? "bg-amber-50/10 dark:bg-amber-950/10 border-amber-500/30 text-amber-600 dark:text-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        : "bg-muted/30 border-border text-amber-600 dark:text-amber-400"
+                    )}
+                  >
+                    <option value="" className="text-muted-foreground">-- Select Pause Reason --</option>
+                    <option value="Awaiting Customer Action">Awaiting Customer Action</option>
+                    <option value="Awaiting 3rd Party Vendor">Awaiting 3rd Party Vendor</option>
+                    <option value="Awaiting Internal Approval">Awaiting Internal Approval</option>
+                    <option value="Awaiting Hardware/Software Delivery">Awaiting Hardware/Software Delivery</option>
+                    <option value="Other / Pending Inquiry">Other / Pending Inquiry</option>
+                  </select>
+                </div>
+              )}
+
               {/* Assignment group */}
               <div className="grid grid-cols-3 items-center gap-4">
                 <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assignment group</label>
@@ -1803,7 +1891,7 @@ export function TicketDetail() {
                     deadline={fallbackResponseDeadline}
                     metAt={ticket.firstResponseAt}
                     startTime={ticket.responseSlaStartTime || ticket.createdAt}
-                    isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User'}
+                    isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
                     onHoldStart={ticket.onHoldStart}
                     totalPausedTime={ticket.totalPausedTime}
                   />
@@ -1813,7 +1901,7 @@ export function TicketDetail() {
                     metAt={ticket.resolvedAt}
                     startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
                     waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !== "New" ? new Date().toISOString() : null)}
-                    isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User'}
+                    isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
                     onHoldStart={ticket.onHoldStart}
                     totalPausedTime={ticket.totalPausedTime}
                   />
@@ -1863,7 +1951,7 @@ export function TicketDetail() {
                       deadline={fallbackResponseDeadline}
                       metAt={ticket.firstResponseAt}
                       startTime={ticket.responseSlaStartTime || ticket.createdAt}
-                      isPaused={ticket.status === 'On Hold'}
+                      isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
                       onHoldStart={ticket.onHoldStart}
                       totalPausedTime={ticket.totalPausedTime}
                     />
@@ -1883,7 +1971,7 @@ export function TicketDetail() {
                       metAt={ticket.resolvedAt}
                       startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
                       waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !== "New" ? new Date().toISOString() : null)}
-                      isPaused={ticket.status === 'On Hold'}
+                      isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
                       onHoldStart={ticket.onHoldStart}
                       totalPausedTime={ticket.totalPausedTime}
                     />

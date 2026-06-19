@@ -1,0 +1,87 @@
+# ════════════════════════════════════════════════════════════════════
+# Ticklora ITSM — Render Blueprint
+# ════════════════════════════════════════════════════════════════════
+#
+# Single Web Service:
+#   Spring Boot JAR serves both the REST API and the React frontend
+#   (React is built into src/main/resources/static/ via Vite).
+#
+# Deploy: Connect this repo on render.com → New Blueprint Instance
+# ════════════════════════════════════════════════════════════════════
+
+services:
+  - type: web
+    name: ticklora-core
+    runtime: docker
+    dockerfilePath: ./microservices/core-service-springboot/Dockerfile
+    dockerContext: ./microservices/core-service-springboot
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      # ── MySQL Database ──────────────────────────────────────────
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        value: "3306"
+      - key: MYSQL_DATABASE
+        value: connectit_db
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+
+      # ── JWT ─────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        generateValue: true
+
+      # ── Gemini AI ───────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # ── Email / SMTP ────────────────────────────────────────────
+      - key: SMTP_HOST
+        value: smtp.office365.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_HOST
+        value: smtp.office365.com
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: MAIL_FROM_NAME
+        value: "Ticklora Support"
+
+      # ── Inbound IMAP ────────────────────────────────────────────
+      - key: IMAP_HOST
+        value: outlook.office365.com
+      - key: IMAP_PORT
+        value: "993"
+      - key: IMAP_USER
+        sync: false
+      - key: IMAP_PASS
+        sync: false
+
+      # ── Microsoft Graph (optional) ──────────────────────────────
+      - key: GRAPH_TENANT_ID
+        sync: false
+      - key: GRAPH_CLIENT_ID
+        sync: false
+      - key: GRAPH_CLIENT_SECRET
+        sync: false
+      - key: GRAPH_USER_EMAIL
+        sync: false
+
+      # ── Runtime ─────────────────────────────────────────────────
+      - key: SPRING_JPA_HIBERNATE_DDL_AUTO
+        value: update
+      - key: PORT
+        value: "3000"

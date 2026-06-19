@@ -236,6 +236,18 @@ export function Sidebar() {
       ]
     },
     {
+      label: "SLA Management",
+      adminOnly: true,
+      items: [
+        { icon: LayoutDashboard, label: "SLA Dashboard", path: "/sla-management?tab=dashboard" },
+        { icon: Clock, label: "SLA Policies", path: "/sla-management?tab=policies" },
+        { icon: Clock, label: "Business Hours", path: "/sla-management?tab=business-hours" },
+        { icon: CalendarDays, label: "Holiday Calendar", path: "/sla-management?tab=holidays" },
+        { icon: AlertOctagon, label: "Escalation Rules", path: "/sla-management?tab=escalations" },
+        { icon: BarChart3, label: "SLA Reports", path: "/sla-management?tab=reports" },
+      ]
+    },
+    {
       label: "System Administration",
       adminOnly: true,
       items: [
