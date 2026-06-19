@@ -1,1963 +1,1963 @@
-import React, { useEffect, useRef, useState } from "react";
-import { collection, addDoc, query, onSnapshot, updateDoc, doc, serverTimestamp, orderBy, where, deleteDoc } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { useAuth } from "../contexts/AuthContext";
-import { ROLE_HIERARCHY, Role } from "../lib/roles";
-import { Plus, Filter, MoreVertical, Search, Edit, Trash2, Users, Mic, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn, formatDate } from "@/lib/utils";
-import { useServiceCatalog } from "../lib/serviceCatalog";
-import { calculateSLADeadline } from "../lib/slaUtils";
-import { createSpeechController } from "../lib/speechToEnglish";
-import { getEffectiveSlaDelayState } from "../lib/slaDelayUtils";
+import React, { useEffect, useRef, useState } from"react";
+import { collection, addDoc, query, onSnapshot, updateDoc, doc, serverTimestamp, orderBy, where, deleteDoc } from"firebase/firestore";
+import { db, handleFirestoreError, OperationType } from"../lib/firebase";
+import { useAuth } from"../contexts/AuthContext";
+import { ROLE_HIERARCHY, Role } from"../lib/roles";
+import { Plus, Filter, MoreVertical, Search, Edit, Trash2, Users, Mic, ExternalLink } from"lucide-react";
+import { Button } from"@/components/ui/button";
+import { cn, formatDate } from"@/lib/utils";
+import { useServiceCatalog } from"../lib/serviceCatalog";
+import { calculateSLADeadline } from"../lib/slaUtils";
+import { createSpeechController } from"../lib/speechToEnglish";
+import { getEffectiveSlaDelayState } from"../lib/slaDelayUtils";
 
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { ContextMenu } from "../components/ContextMenu";
-import { CREATE_INCIDENT_FORM_DEFAULTS, DEFAULT_COMPANY_FEATURE_PERMISSION } from "../lib/createIncidentFeatures";
+import { Link, useSearchParams, useNavigate } from"react-router-dom";
+import { ContextMenu } from"../components/ContextMenu";
+import { CREATE_INCIDENT_FORM_DEFAULTS, DEFAULT_COMPANY_FEATURE_PERMISSION } from"../lib/createIncidentFeatures";
 
 function toMs(val: any): number {
-  if (!val) return NaN;
-  if (typeof val === 'object' && val.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1_000_000;
-  if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().getTime();
-  if (typeof val === 'number') return val;
-  return new Date(val).getTime();
+ if (!val) return NaN;
+ if (typeof val === 'object' && val.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1_000_000;
+ if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().getTime();
+ if (typeof val === 'number') return val;
+ return new Date(val).getTime();
 }
 
-import { SLATimer } from "../components/SLATimer";
+import { SLATimer } from"../components/SLATimer";
 
 export function Tickets() {
-  const { user, profile } = useAuth();
-  const navigate = useNavigate();
-  const { categories, subcategories, serviceProviders, groups, members } = useServiceCatalog();
-  const [searchParams] = useSearchParams();
-  const [viewMode, setViewMode] = useState<'hybrid' | 'table'>('hybrid');
-  const [showFilters, setShowFilters] = useState(false);
-  const filter = searchParams.get("filter");
-  const action = searchParams.get("action");
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, ticketId: string, ticketNumber: string } | null>(null);
-
-  const handleContextMenu = (e: React.MouseEvent, ticket: any) => {
-    e.preventDefault();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      ticketId: ticket.id,
-      ticketNumber: ticket.number || ticket.id
-    });
-  };
-
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [agents, setAgents] = useState<any[]>([]);
-  const [allUsers, setAllUsers] = useState<any[]>([]);
-  const [incidentCategories, setIncidentCategories] = useState<string[]>([]);
-  const [dynamicFields, setDynamicFields] = useState<any[]>([]);
-  const [dynamicOptions, setDynamicOptions] = useState<Record<string, any[]>>({});
-  const [callerSearch, setCallerSearch] = useState("");
-  const [affectedSearch, setAffectedSearch] = useState("");
-  const [showCallerResults, setShowCallerResults] = useState(false);
-  const [showAffectedResults, setShowAffectedResults] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [previewNumber, setPreviewNumber] = useState("");
-
-  const openModal = () => {
-    speechControllerRef.current?.stop();
-    setSpeechLiveText("");
-    setPreviewNumber(`INC${Math.floor(1000000 + Math.random() * 9000000)}`);
-    const companyId = searchParams.get("companyId");
-    setNewTicket(prev => ({
-      ...prev,
-      caller: profile?.name || user?.email || "",
-      company: companyId || ""
-    }));
-    setCallerSearch(profile?.name || user?.email || "");
-    setIsModalOpen(true);
-  };
-  const closeModal = () => {
-    speechControllerRef.current?.stop();
-    setSpeechLiveText("");
-    setIsModalOpen(false);
-  };
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [suggestedSolution, setSuggestedSolution] = useState<string | null>(null);
-  const [speechLiveText, setSpeechLiveText] = useState("");
-  const [speechListening, setSpeechListening] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(true);
-  const speechControllerRef = useRef<ReturnType<typeof createSpeechController> | null>(null);
-
-  useEffect(() => {
-    if (action === "new") {
-      openModal();
-    }
-  }, [action]);
-
-  // Fetch active incident categories and options dynamically
-  useEffect(() => {
-    fetch("/api/incident-categories?active_only=true")
-      .then(r => r.json())
-      .then(async (data) => {
-        if (Array.isArray(data)) {
-          setIncidentCategories(data.map((c: any) => c.name));
-          setDynamicFields(data);
-
-          // Fetch options for each dynamic field
-          const optionsMap: Record<string, any[]> = {};
-          await Promise.all(
-            data.map(async (cat: any) => {
-              try {
-                const res = await fetch(`/api/incident-categories/options?category_id=${cat.id}&active_only=true`);
-                if (res.ok) {
-                  const opts = await res.json();
-                  optionsMap[cat.id] = opts;
-                }
-              } catch (e) {
-                console.error("Error loading options for category", cat.id, e);
-              }
-            })
-          );
-          setDynamicOptions(optionsMap);
-        }
-      })
-      .catch(() => {
-        // Fallback to defaults if API unavailable
-        setIncidentCategories([
-          "Hardware Issue", "Software Issue", "Network Issue", "System Access",
-          "Security Issue", "Login Problem", "Email Issue", "Performance Issue",
-          "Service Request", "Other"
-        ]);
-      });
-  }, []);
-
-  useEffect(() => {
-    const controller = createSpeechController({
-      onInterim: (text) => {
-        setSpeechLiveText(text);
-        setNewTicket(prev => ({ ...prev, description: text }));
-      },
-      onFinal: (text) => {
-        setSpeechLiveText("");
-        setNewTicket(prev => ({ ...prev, description: text }));
-      },
-      onStateChange: (listening) => {
-        setSpeechListening(listening);
-        if (!listening) {
-          setSpeechLiveText("");
-        }
-      },
-      onError: (message) => {
-        setSpeechListening(false);
-        alert(message);
-      }
-    });
-
-    speechControllerRef.current = controller;
-    setSpeechSupported(controller.supported);
-
-    return () => {
-      controller.stop();
-    };
-  }, []);
-
-  const [newTicket, setNewTicket] = useState({
-    ...CREATE_INCIDENT_FORM_DEFAULTS,
-    caller: profile?.name || user?.email || "",
-    callerEmail: user?.email || "",
-    incidentCategory: ""
-  });
-
-  const [assignedTo, setAssignedTo] = useState("");
-  const [slaPolicies, setSlaPolicies] = useState<any[]>([]);
-  // DYNAMIC DROPDOWNS from database (via useServiceCatalog hook)
-  const activeCategories = categories.filter(c => c.status === 'active');
-  const selectedCategoryObj = activeCategories.find(c => c.name === newTicket.category);
-  const filteredSubcategories = subcategories.filter(s => s.status === 'active' && (!selectedCategoryObj || s.categoryId === selectedCategoryObj.id));
-  const selectedSubcategoryObj = filteredSubcategories.find(s => s.name === newTicket.subcategory);
-  const filteredServiceProviders = serviceProviders.filter(sp => sp.status === 'active' && (!selectedSubcategoryObj || sp.subcategoryId === selectedSubcategoryObj.id));
-
-  const visibleGroups = groups;
-  const displayGroups = visibleGroups;
-
-  // DYNAMIC GROUP FILTERING (Requirement: Only users belonging to the selected group, or all agents if no group selected)
-  const selectedGroupObj = groups.find(g => g.name === newTicket.assignmentGroup);
-  const visibleMembers = selectedGroupObj?.memberIds
-    ? allUsers.filter(u => selectedGroupObj.memberIds?.includes(u.id) || selectedGroupObj.memberIds?.includes(u.uid))
-    : agents;
-
-  // Realistic Catalog initialization handled via state defaults
-
-  // Removed auto-reset logic for subcategories/providers/groups to maintain independence
-
-  useEffect(() => {
-    const q = query(collection(db, "sla_policies"), where("isActive", "==", true));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setSlaPolicies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, "sla_policies");
-    });
-    return unsubscribe;
-  }, []);
-
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [companyFeaturePermissions, setCompanyFeaturePermissions] = useState<Record<string, any>>({});
-  useEffect(() => {
-    const q = query(collection(db, "companies"), orderBy("name"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setCompanies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    if (!newTicket.company) {
-      setCompanyFeaturePermissions({});
-      return;
-    }
-
-    const permissionsQuery = query(
-      collection(db, "company_feature_permissions"),
-      where("companyId", "==", newTicket.company)
-    );
-
-    const unsubscribe = onSnapshot(permissionsQuery, (snapshot) => {
-      const nextPermissions = snapshot.docs.reduce((acc, permissionDoc) => {
-        const data = permissionDoc.data() as any;
-        acc[data.featureId] = {
-          ...DEFAULT_COMPANY_FEATURE_PERMISSION,
-          ...data,
-        };
-        return acc;
-      }, {} as Record<string, any>);
-
-      setCompanyFeaturePermissions(nextPermissions);
-    });
-
-    return unsubscribe;
-  }, [newTicket.company]);
-
-  useEffect(() => {
-    if (!user || !profile) return;
-
-    const ticketsRef = collection(db, "tickets");
-
-    // All users (including regular users) see all open tickets
-    let q = query(ticketsRef, orderBy("createdAt", "desc"));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const ticketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setTickets(ticketsData);
-    }, (error) => {
-      console.error("Firestore Error in Tickets List:", error);
-      // We don't throw here to avoid crashing the UI, but we log the error
-    });
-
-    return unsubscribe;
-  }, [user, profile]);
-
-  useEffect(() => {
-    const q = query(collection(db, "users"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAllUsers(usersList);
-      setAgents(usersList.filter((u: any) => u.role === "agent" || u.role === "admin" || u.role === "super_admin" || u.role === "ultra_super_admin"));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, "users");
-    });
-    return unsubscribe;
-  }, []);
-
-  const formatDateTime = (date: any) => {
-    if (!date) return "-";
-    if (typeof date.toDate === "function") {
-      return date.toDate().toISOString();
-    }
-    if (typeof date === "string") {
-      return date;
-    }
-    if (date.seconds) {
-      return new Date(date.seconds * 1000).toISOString();
-    }
-    return undefined;
-  };
-
-  const [columnFilters, setColumnFilters] = useState({
-    number: "",
-    title: "",
-    caller: "",
-    priority: "",
-    status: "",
-    category: "",
-    assignmentGroup: "",
-    assignedTo: ""
-  });
-
-  const filteredTickets = tickets.filter(t => {
-    // Top-level quick filters
-    const now = Date.now();
-    const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
-    const thirtyDaysAgo = now - 30 * 24 * 3600 * 1000;
-
-    const getTs = (tick: any) => {
-      const c = tick.createdAt;
-      if (!c) return 0;
-      if (c?.seconds) return c.seconds * 1000;
-      if (typeof c === "string") return new Date(c).getTime();
-      return 0;
-    };
-
-    if (filter === "assigned_to_me" && t.assignedTo !== user?.uid && t.assignedTo !== profile?.name && t.assignedToName !== profile?.name) return false;
-    if (filter === "created_by_me" && t.createdBy !== user?.uid) return false;
-    if (filter === "in_progress" && t.status !== "In Progress") return false;
-    if (filter === "closed" && t.status !== "Closed") return false;
-    if (filter === "pending" && t.status !== "Pending" && t.status !== "On Hold") return false;
-    if (filter === "open" && (t.status === "Resolved" || t.status === "Closed" || t.status === "Canceled")) return false;
-    if (filter === "unassigned" && t.assignedTo) return false;
-    if (filter === "resolved" && t.status !== "Resolved" && t.status !== "Closed") return false;
-    if (filter === "critical_open" && (t.status === "Resolved" || t.status === "Closed" || t.status === "Canceled" || !t.priority?.includes("Critical"))) return false;
-    if (filter === "overdue" && (t.status === "Resolved" || t.status === "Closed" || t.status === "Canceled" || !t.resolutionDeadline || new Date(t.resolutionDeadline).getTime() > now)) return false;
-    if (filter === "stale_7" && (t.status === "Resolved" || t.status === "Closed" || t.status === "Canceled" || getTs(t) >= sevenDaysAgo)) return false;
-    if (filter === "older_30" && (t.status === "Resolved" || t.status === "Closed" || t.status === "Canceled" || getTs(t) >= thirtyDaysAgo)) return false;
-    const slaDelayState = getEffectiveSlaDelayState(t);
-    if (filter === "sla_25" && !slaDelayState.thresholdReached) return false;
-    if (filter === "sla_justification" && !slaDelayState.awaitingInitialJustification) return false;
-    if (filter === "sla_owner_response" && !slaDelayState.awaitingOwnerResponse) return false;
-    if (filter === "sla_escalated" && !(slaDelayState.meta.escalationLevel > 0)) return false;
-    if (filter === "sla_breached_rca" && !(slaDelayState.meta.breachAt || slaDelayState.awaitingRca)) return false;
-
-    // Column-level search filters (case-insensitive)
-    const matches = (val: string, filterVal: string) => !filterVal || (val || "").toLowerCase().includes(filterVal.toLowerCase());
-
-    return (
-      matches(t.number, columnFilters.number) &&
-      matches(t.title, columnFilters.title) &&
-      matches(t.caller, columnFilters.caller) &&
-      matches(t.priority, columnFilters.priority) &&
-      matches(t.status, columnFilters.status) &&
-      (matches(t.category, columnFilters.category) || matches(t.incidentCategory || t.incident_category || "", columnFilters.category)) &&
-      matches(t.assignmentGroup, columnFilters.assignmentGroup) &&
-      matches(agents.find(a => a.id === t.assignedTo)?.name || t.assignedToName || t.assignedTo || "", columnFilters.assignedTo)
-    );
-  });
-
-  const calculatePriority = (impact: string, urgency: string) => {
-    const i = parseInt(impact[0]);
-    const u = parseInt(urgency[0]);
-    const sum = i + u;
-    if (sum <= 2) return "1 - Critical";
-    if (sum === 3) return "2 - High";
-    if (sum === 4) return "3 - Moderate";
-    return "4 - Low";
-  };
-
-  const getTicketsBreachRisk = (ticket: any) => {
-    if (!ticket || ticket.status === "Resolved" || ticket.status === "Closed" || ticket.status === "Canceled") return null;
-
-    const deadlineStr = ticket.resolutionDeadline || ticket.resolution_deadline;
-    if (!deadlineStr) return null;
-
-    const deadline = new Date(deadlineStr).getTime();
-    const now = Date.now();
-    const createdTimeMs = ticket.createdAt?.seconds 
-      ? ticket.createdAt.seconds * 1000 
-      : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
-
-    if (now >= deadline) return { risk: "breached", score: 100, label: "Breached" };
-
-    const totalTime = deadline - createdTimeMs;
-    const timeElapsed = now - createdTimeMs;
-    const ratio = totalTime > 0 ? timeElapsed / totalTime : 0;
-
-    const workloadFactor = ticket.assignedTo ? 1.1 : 1.25;
-
-    const categoryMultipliers: Record<string, number> = {
-      "Network": 1.2,
-      "Database": 1.15,
-      "Software": 1.1,
-      "Hardware": 1.05
-    };
-    const catMultiplier = categoryMultipliers[ticket.category || ""] || 1.0;
-
-    const rawScore = ratio * 100 * workloadFactor * catMultiplier;
-    const score = Math.min(99, Math.round(rawScore));
-
-    if (score > 80) return { risk: "high", score, label: "High Risk" };
-    if (score > 55) return { risk: "medium", score, label: "Medium Risk" };
-    return { risk: "low", score, label: "Low Risk" };
-  };
-
-  const getFeaturePermission = (featureId: string) => ({
-    ...DEFAULT_COMPANY_FEATURE_PERMISSION,
-    ...(companyFeaturePermissions[featureId] || {}),
-  });
-
-  const isFeatureVisible = (featureId: string) => {
-    const permission = getFeaturePermission(featureId);
-    return permission.canView && permission.status !== "disabled";
-  };
-
-  const isFeatureDisabled = (featureId: string) => {
-    const permission = getFeaturePermission(featureId);
-    return permission.status === "disabled" || !permission.canUse;
-  };
-
-  const isFeatureReadOnly = (featureId: string) => {
-    const permission = getFeaturePermission(featureId);
-    return permission.status === "disabled" || !permission.canUse || !permission.canEdit;
-  };
-
-  const isFeatureMandatory = (featureId: string) => getFeaturePermission(featureId).isMandatory;
-
-  const getFieldRequired = (featureId: string, baseRequired = false) => baseRequired || isFeatureMandatory(featureId);
-
-  const getInputClassName = (featureId: string, baseClassName: string) =>
-    cn(baseClassName, isFeatureReadOnly(featureId) && "bg-muted/30 cursor-not-allowed");
-
-  const handleAIAssist = async () => {
-    const shortDesc = newTicket.title;
-    if (!shortDesc) {
-      alert("Please enter a Short Description first, then click Autofill with AI.");
-      return;
-    }
-
-    setIsAiLoading(true);
-    setSuggestedSolution(null);
-
-    try {
-      // Run classify + description generation in parallel using our server endpoints
-      const [classifyRes, suggestRes] = await Promise.all([
-        fetch('/api/ai/classify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: shortDesc }),
-        }),
-        fetch('/api/ai/suggest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: shortDesc }),
-        }),
-      ]);
-
-      const classData = await classifyRes.json();
-      const suggestData = await suggestRes.json();
-
-      if (!classifyRes.ok) throw new Error(classData.error || "Classification failed");
-      if (!suggestRes.ok) throw new Error(suggestData.error || "Suggestion failed");
-
-      setNewTicket(prev => ({
-        ...prev,
-        category: classData.category || prev.category,
-        impact: classData.priority === 'Critical' || classData.priority === 'High' ? '1 - High' : classData.priority === 'Medium' ? '2 - Medium' : '3 - Low',
-        urgency: classData.priority === 'Critical' || classData.priority === 'High' ? '1 - High' : classData.priority === 'Medium' ? '2 - Medium' : '3 - Low',
-        description: suggestData.suggestion || prev.description,
-      }));
-
-      if (suggestData.suggestion) {
-        setSuggestedSolution(suggestData.suggestion);
-      }
-    } catch (e) {
-      console.error(e);
-      alert("AI autofill failed. Please fill in the description manually.");
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  const handleCreateTicket = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-
-    if (!user) {
-      alert("You must be logged in to create a ticket.");
-      return;
-    }
-
-    const hasCategoryAccess = ["admin", "super_admin", "ultra_super_admin"].includes(profile?.role || "") ||
-      ["arun.g@technosprint.net", "swedhasris@gmail.com", "ulter@technosprint.net", "admin@technosprint.net", "admin@connectit.local", "demo-admin@connectit.local", "demo-super_admin@connectit.local", "demo-ultra_super_admin@connectit.local"].includes(user?.email || profile?.email || "");
-
-    // Only validate truly required fields: caller and title are always required.
-    // category, subcategory, service are required only when their feature is visible.
-    // description, company, assignmentGroup, assignedTo are optional unless explicitly made mandatory.
-    const coreRequiredFieldChecks = [
-      { key: "field.caller", label: "Reporting User", value: newTicket.caller, alwaysRequired: true },
-      { key: "field.title", label: "Short description", value: newTicket.title, alwaysRequired: true },
-      { key: "field.category", label: "Category", value: newTicket.category, alwaysRequired: true },
-      { key: "field.subcategory", label: "Subcategory", value: newTicket.subcategory, alwaysRequired: true },
-      { key: "field.service", label: "Service", value: newTicket.service, alwaysRequired: true },
-    ];
-
-    const missingRequiredField = coreRequiredFieldChecks.find(({ key, value, alwaysRequired }) =>
-      isFeatureVisible(key) && (alwaysRequired || isFeatureMandatory(key)) && !value
-    );
-
-    if (missingRequiredField) {
-      alert(`Please fill in the required field: ${missingRequiredField.label}.`);
-      return;
-    }
-
-    setIsSubmitting(true);
-    console.log("Submitting new ticket:", newTicket);
-
-    try {
-      let priority = calculatePriority(newTicket.impact, newTicket.urgency);
-
-      // Find matching SLA policy (Prioritize Department + Priority + Category, then Department + Priority, then Priority)
-      const matchingPolicy = slaPolicies.find(p => p.priority === priority && p.department === newTicket.assignmentGroup && p.category === newTicket.category)
-        || slaPolicies.find(p => p.priority === priority && p.department === newTicket.assignmentGroup)
-        || slaPolicies.find(p => p.priority === priority && (p.category === newTicket.category || !p.category))
-        || slaPolicies.find(p => p.priority === priority)
-        || { responseTimeHours: 4, resolutionTimeHours: 24 }; // Fallback
-
-      const now = new Date();
-      const responseDeadline = calculateSLADeadline(now, (matchingPolicy.responseTimeHours || 4), {
-        businessHours: matchingPolicy.businessHours,
-        excludeWeekends: matchingPolicy.excludeWeekends,
-        excludeHolidays: matchingPolicy.excludeHolidays
-      });
-      // Resolution deadline is null initially as it doesn't start until first response
-      const resolutionDeadline = new Date(now.getTime() + ((matchingPolicy.responseTimeHours || 4) + (matchingPolicy.resolutionTimeHours || 24)) * 60 * 60 * 1000);
-
-      const ticketNumber = `INC${Math.floor(1000000 + Math.random() * 9000000)}`;
-
-      // Immediate Breach Check (SLA Engine simulation for creation)
-      let responseSlaStatus = "In Progress";
-      let resolutionSlaStatus = "In Progress";
-
-      if (responseDeadline.getTime() <= now.getTime()) {
-        priority = "1 - Critical";
-        responseSlaStatus = "Breached";
-      }
-
-      // Workflow Automation: Auto-assignment based on category
-      const assignmentGroup = newTicket.assignmentGroup || visibleGroups[0]?.name || "Service Desk";
-
-      // Determine assigned user name if applicable (fix: check both id and userId fields)
-      const assignedUserName = newTicket.assignedTo
-        ? visibleMembers.find(m => m.id === newTicket.assignedTo)?.name
-        || visibleMembers.find(m => m.id === newTicket.assignedTo)?.userName
-        || visibleMembers.find(m => m.userId === newTicket.assignedTo)?.userName
-        || agents.find(a => a.id === newTicket.assignedTo)?.name
-        || allUsers.find(u => u.id === newTicket.assignedTo)?.name
-        || ""
-        : "";
-
-      const ticketData = {
-        ...newTicket,
-        incidentCategory: hasCategoryAccess ? (newTicket.incidentCategory || null) : null,
-        incident_category: hasCategoryAccess ? (newTicket.incidentCategory || null) : null,
-        number: ticketNumber,
-        assignmentGroup,
-        assignedToName: assignedUserName,
-        priority,
-        status: newTicket.assignedTo ? "Assigned" : "New",
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        responseDeadline: responseDeadline.toISOString(),
-        resolutionDeadline: null,
-        responseSlaStartTime: now.toISOString(),
-        resolutionSlaStartTime: null,
-        responseSlaStatus,
-        resolutionSlaStatus: "Pending",
-        slaResolutionHours: matchingPolicy.resolutionTimeHours || 24,
-        slaPolicy: matchingPolicy.name || "Default SLA",
-        sla_name: matchingPolicy.name || "Default SLA",
-        slaDelayMeta: null,
-        slaDelayLogs: [],
-        totalPausedTime: 0,
-        history: [{ action: "Ticket Created (Response SLA Started)", timestamp: now.toISOString(), user: profile?.name || user.email }]
-      };
-
-      console.log("Final ticket data payload:", ticketData);
-
-      // Construct API payload matching POST /api/tickets
-      const apiPayload = {
-        title: newTicket.title,
-        description: newTicket.description,
-        caller: newTicket.caller || user?.email || "",
-        callerEmail: newTicket.callerEmail || user?.email || "",
-        incidentCategory: newTicket.incidentCategory,
-        subcategory: newTicket.subcategory,
-        service: newTicket.service,
-        serviceOffering: newTicket.serviceOffering,
-        cmdbItem: newTicket.cmdbItem,
-        status: newTicket.status || "New",
-        priority: newTicket.priority || "4 - Low",
-        impact: newTicket.impact || "3 - Low",
-        urgency: newTicket.urgency || "3 - Low",
-        channel: newTicket.channel || "Self-service",
-        assignmentGroup: newTicket.assignmentGroup,
-        assignedTo: newTicket.assignedTo,
-        assignedToName: assignedUserName,
-        createdBy: user?.uid,
-        createdByName: profile?.name || user?.email || "",
-        companyId: newTicket.company,
-        affectedUser: newTicket.affectedUser,
-        affectedUserEmail: newTicket.affectedUserEmail,
-        reportingUserEmail: newTicket.callerEmail,
-        customFields: newTicket.customFields,
-        watchList: newTicket.watchList,
-        // SLA tracking fields
-        responseDeadline: responseDeadline.toISOString(),
-        resolutionDeadline: null,
-        responseSlaStartTime: now.toISOString(),
-        resolutionSlaStartTime: null,
-        responseSlaStatus,
-        resolutionSlaStatus: "Pending",
-        slaResolutionHours: matchingPolicy.resolutionTimeHours || 24,
-        slaPolicy: matchingPolicy.name || "Default SLA",
-        sla_name: matchingPolicy.name || "Default SLA",
-        slaDelayMeta: null,
-        slaDelayLogs: [],
-        totalPausedTime: 0
-      };
-
-      console.log("Sending ticket creation payload to API:", apiPayload);
-
-      const res = await fetch("/api/tickets/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apiPayload)
-      });
-      
-      if (!res.ok) {
-        throw new Error("Failed to create ticket via API: " + await res.text());
-      }
-      
-      const createdData = await res.json();
-      const ticketId = createdData.id;
-      console.log("Ticket created successfully with ID:", ticketId);
-
-      closeModal();
-      alert(`Ticket ${ticketNumber} has been created successfully.`);
-
-      setNewTicket({
-        ...CREATE_INCIDENT_FORM_DEFAULTS,
-        caller: "",
-        incidentCategory: ""
-      });
-      setSpeechLiveText("");
-    } catch (error: any) {
-      console.error("CRITICAL: Error creating ticket:", error);
-      alert(`Failed to create ticket: ${error.message || "Unknown error"}. Please check your connection and try again.`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const updateStatus = async (ticketId: string, newStatus: string) => {
-    const ticketRef = doc(db, "tickets", ticketId);
-    const ticket = tickets.find(t => t.id === ticketId);
-    if (!ticket) return;
-    await updateDoc(ticketRef, {
-      status: newStatus,
-      updatedAt: serverTimestamp(),
-      history: [
-        ...(ticket?.history || []),
-        { action: `Status updated to ${newStatus}`, timestamp: new Date().toISOString(), user: profile?.name || user?.email }
-      ]
-    });
-
-    // Sync to MySQL via REST API
-    try {
-      await fetch(`/api/tickets/${ticketId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus })
-      });
-    } catch (e) {
-      console.error("Failed to sync status update to API:", e);
-    }
-
-    // Dispatch real-time notification
-    try {
-      fetch("/api/notifications/dispatch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ticket: {
-            id: ticketId,
-            ticket_number: ticket.number,
-            created_by: ticket.createdBy,
-            created_by_name: ticket.createdByName || ticket.caller,
-            assigned_to: ticket.assignedTo || null,
-            assigned_to_name: ticket.assignedToName || null,
-            status: newStatus,
-            priority: ticket.priority
-          },
-          actorId: user?.uid || "System",
-          actorName: profile?.name || user?.email || "System",
-          type: "update",
-          oldStatus: ticket.status,
-          newStatus: newStatus
-        })
-      });
-    } catch (e) {
-      console.error("Failed to dispatch status notification:", e);
-    }
-  };
-
-  const updateAssignment = async (ticketId: string, agentId: string) => {
-    const ticketRef = doc(db, "tickets", ticketId);
-    const ticket = tickets.find(t => t.id === ticketId);
-    if (!ticket) return;
-    const agent = agents.find(a => a.id === agentId);
-    const newStatus = agentId ? "Assigned" : "New";
-    await updateDoc(ticketRef, {
-      assignedTo: agentId,
-      assignedToName: agent?.name || "",
-      status: newStatus,
-      updatedAt: serverTimestamp(),
-      history: [
-        ...(ticket?.history || []),
-        { action: `Assigned to ${agent?.name || "None"}`, timestamp: new Date().toISOString(), user: profile?.name || user?.email }
-      ]
-    });
-
-    // Sync to MySQL via REST API
-    try {
-      await fetch(`/api/tickets/${ticketId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignedTo: agentId, assignedToName: agent?.name || "", status: newStatus })
-      });
-    } catch (e) {
-      console.error("Failed to sync assignment update to API:", e);
-    }
-
-    // Dispatch real-time notification
-    try {
-      fetch("/api/notifications/dispatch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ticket: {
-            id: ticketId,
-            ticket_number: ticket.number,
-            created_by: ticket.createdBy,
-            created_by_name: ticket.createdByName || ticket.caller,
-            assigned_to: agentId || null,
-            assigned_to_name: agent?.name || null,
-            status: newStatus,
-            priority: ticket.priority
-          },
-          actorId: user?.uid || "System",
-          actorName: profile?.name || user?.email || "System",
-          type: "update",
-          oldAssignee: ticket.assignedTo,
-          newAssignee: agentId
-        })
-      });
-    } catch (e) {
-      console.error("Failed to dispatch assignment notification:", e);
-    }
-  };
-
-  return (
-    <div className="standard-page-layout font-outfit">
-      {/* Workspace Header */}
-      <div className="standard-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40">
-        <div>
-          <h1 className="page-title">
-            {filter === "assigned_to_me" ? "My Assigned Tickets" :
-             filter === "open" ? "Open Incidents" :
-             filter === "unassigned" ? "Open - Unassigned" :
-             filter === "resolved" ? "Resolved Incidents" :
-             filter === "created_by_me" ? "My Created Tickets" :
-             filter === "in_progress" ? "In Progress Incidents" :
-             filter === "closed" ? "Closed Incidents" :
-             filter === "pending" ? "Pending Incidents" :
-             filter === "overdue" ? "Overdue Incidents" :
-             filter === "critical_open" ? "Critical Open Incidents" :
-             "All Incidents"}
-          </h1>
-          <p className="page-description">Real-time incident streams & service request orchestration.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Layout viewMode toggle buttons */}
-          <div className="bg-muted/30 dark:bg-white/5 border border-border/40 p-1 rounded-xl flex gap-1 items-center">
-            <button
-              onClick={() => setViewMode('hybrid')}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                viewMode === 'hybrid'
-                  ? "bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20 shadow-[0_0_10px_rgba(37,99,235,0.15)]"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Grid View
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                viewMode === 'table'
-                  ? "bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-900/30 shadow-[0_0_10px_rgba(37,99,235,0.15)]"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Ops Table
-            </button>
-          </div>
-
-          <Button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] cursor-pointer">
-            <Plus className="w-4 h-4 mr-2" /> Launch Incident
-          </Button>
-        </div>
-      </div>
-
-      {/* Control Toolbar */}
-      <div className="glass-panel rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative w-full md:w-64">
-            <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search description..."
-              value={columnFilters.title}
-              onChange={e => setColumnFilters({ ...columnFilters, title: e.target.value })}
-              className="pl-9 pr-4 py-2 bg-background/50 border border-border/80 rounded-xl text-xs w-full focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-            className={cn(
-              "rounded-xl cursor-pointer text-xs font-bold transition-all shrink-0",
-              showFilters ? "bg-blue-500/10 border-blue-500 text-blue-500 dark:text-blue-400" : ""
-            )}
-          >
-            <Filter className="w-3.5 h-3.5 mr-2" /> Advanced Filter
-          </Button>
-        </div>
-        <div className="text-xs text-muted-foreground shrink-0 font-bold">Showing {filteredTickets.length} incidents</div>
-      </div>
-
-      {/* Quick Filters Drawer */}
-      <div className={cn(
-        "glass-panel rounded-2xl p-5 border border-border/80 transition-all duration-300 shadow-lg",
-        showFilters ? "block animate-in slide-in-from-top duration-200" : "hidden"
-      )}>
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-3.5">Workspace Filters</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Incident ID</label>
-            <input value={columnFilters.number} onChange={e => setColumnFilters({ ...columnFilters, number: e.target.value })} placeholder="e.g. INC481" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Description</label>
-            <input value={columnFilters.title} onChange={e => setColumnFilters({ ...columnFilters, title: e.target.value })} placeholder="e.g. Database crash" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Reporting User</label>
-            <input value={columnFilters.caller} onChange={e => setColumnFilters({ ...columnFilters, caller: e.target.value })} placeholder="e.g. Alice" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Priority</label>
-            <select value={columnFilters.priority} onChange={e => setColumnFilters({ ...columnFilters, priority: e.target.value })} className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400">
-              <option value="">All Priorities</option>
-              <option value="1 - Critical">1 - Critical</option>
-              <option value="2 - High">2 - High</option>
-              <option value="3 - Moderate">3 - Moderate</option>
-              <option value="4 - Low">4 - Low</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Incident State</label>
-            <input value={columnFilters.status} onChange={e => setColumnFilters({ ...columnFilters, status: e.target.value })} placeholder="e.g. In Progress" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Category</label>
-            <input value={columnFilters.category} onChange={e => setColumnFilters({ ...columnFilters, category: e.target.value })} placeholder="e.g. Hardware" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Assignment Group</label>
-            <input value={columnFilters.assignmentGroup} onChange={e => setColumnFilters({ ...columnFilters, assignmentGroup: e.target.value })} placeholder="e.g. Service Desk" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-muted-foreground font-semibold">Assigned Engineer</label>
-            <input value={columnFilters.assignedTo} onChange={e => setColumnFilters({ ...columnFilters, assignedTo: e.target.value })} placeholder="e.g. Agent Smith" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <Button size="sm" variant="outline" onClick={() => setColumnFilters({ number: "", title: "", caller: "", priority: "", status: "", category: "", assignmentGroup: "", assignedTo: "" })} className="rounded-xl">Reset Filters</Button>
-          <Button size="sm" onClick={() => setShowFilters(false)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl">Apply</Button>
-        </div>
-      </div>
-
-      {/* Main Ticket Feed */}
-      {viewMode === 'hybrid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTickets.length === 0 ? (
-            <div className="col-span-full py-16 text-center text-muted-foreground bg-white/20 dark:bg-black/10 backdrop-blur-md rounded-2xl border border-dashed border-border p-8">
-              No incidents found matching current filters.
-            </div>
-          ) : (
-            filteredTickets.map((ticket, idx) => {
-              const assignedAgent = allUsers.find(a => a.id === ticket.assignedTo) || agents.find(a => a.id === ticket.assignedTo);
-              const p = ticket.priority ?? "4 - Low";
-              const priorityClass = p.includes("Critical") ? "priority-glow-critical border-l-4 border-l-red-500" :
-                p.includes("High") ? "priority-glow-high border-l-4 border-l-orange-500" :
-                  p.includes("Moderate") ? "priority-glow-moderate border-l-4 border-l-emerald-500" : "priority-glow-low border-l-4 border-l-blue-500";
-              const priorityBadge = p.includes("Critical") ? "bg-red-500/10 text-red-500 border border-red-500/20" :
-                p.includes("High") ? "bg-orange-500/10 text-orange-500 border border-orange-500/20" :
-                  p.includes("Moderate") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
-                    "bg-blue-500/10 text-blue-500 border border-blue-500/20";
-
-              const createdTime = ticket.createdAt?.seconds 
-                ? new Date(ticket.createdAt.seconds * 1000) 
-                : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
-
-              const fallbackResponseDeadline = ticket.responseDeadline || 
-                (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
-                  businessHours: ticket.businessHours,
-                  excludeWeekends: ticket.excludeWeekends,
-                  excludeHolidays: ticket.excludeHolidays
-                }).toISOString() : undefined);
-
-              const fallbackResolutionDeadline = ticket.resolutionDeadline || 
-                (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
-                  businessHours: ticket.businessHours,
-                  excludeWeekends: ticket.excludeWeekends,
-                  excludeHolidays: ticket.excludeHolidays
-                }).toISOString() : undefined);
-
-              return (
-                <div key={ticket.id} onContextMenu={(e) => handleContextMenu(e, ticket)} className={cn("glass-panel rounded-2xl p-5 flex flex-col justify-between border border-border/80 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-blue-500/30 group", priorityClass)}>
-                  <div>
-                    <div className="flex items-center justify-between mb-3.5">
-                      <Link to={`/tickets/${ticket.id}`} className="font-mono text-[10px] font-black uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 px-2 py-0.5 rounded border border-blue-500/20 hover:underline">
-                        {ticket.number || `INC000${idx + 1}`}
-                      </Link>
-                      <span className={cn("text-[9px] uppercase tracking-widest font-black px-2 py-0.5 rounded-lg", priorityBadge)}>
-                        {p}
-                      </span>
-                    </div>
-
-                    {/* AI Breach Predictor Badge */}
-                    {(() => {
-                      const risk = getTicketsBreachRisk(ticket);
-                      if (!risk) return null;
-                      return (
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">AI Breach Copilot</span>
-                          <span className={cn(
-                            "text-[9px] uppercase tracking-widest font-black px-2 py-0.5 rounded border transition-all duration-300",
-                            risk.risk === "high" 
-                              ? "bg-red-500/10 text-red-500 border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.15)] animate-pulse"
-                              : risk.risk === "medium"
-                                ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                                : "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
-                          )}>
-                            ⚠️ {risk.score}% Risk
-                          </span>
-                        </div>
-                      );
-                    })()}
-
-                    <Link to={`/tickets/${ticket.id}`} className="block hover:underline">
-                      <h4 className="font-outfit font-bold text-sm text-foreground line-clamp-2 mb-2 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" title={ticket.title}>
-                        {ticket.title}
-                      </h4>
-                    </Link>
-
-                    <div className="text-[10px] text-muted-foreground space-y-1.5 my-3 bg-muted/30 dark:bg-black/10 p-2.5 rounded-xl border border-border/30 dark:border-white/5">
-                      <div className="flex justify-between"><span className="font-semibold uppercase tracking-wider text-muted-foreground text-[8px]">Reporting User:</span> <span className="text-foreground font-medium truncate max-w-[150px]">{ticket.caller}</span></div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold uppercase tracking-wider text-muted-foreground text-[8px]">Category:</span>
-                        <span className="text-foreground font-medium flex items-center gap-1">
-                          📌 {ticket.category || ticket.incidentCategory || ticket.incident_category}
-                        </span>
-                      </div>
-                      <div className="flex justify-between"><span className="font-semibold uppercase tracking-wider text-muted-foreground text-[8px]">Group:</span> <span className="text-foreground font-medium truncate max-w-[150px]">{ticket.assignmentGroup || "(empty)"}</span></div>
-                    </div>
-
-                  </div>
-
-                  <div className="space-y-3.5 mt-2 border-t border-border/40 pt-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex flex-col gap-1 w-full bg-muted/20 dark:bg-black/15 p-2 rounded-xl border border-border/30 dark:border-white/5">
-                        <SLATimer
-                          label="Resp"
-                          deadline={fallbackResponseDeadline}
-                          startTime={ticket.responseSlaStartTime || ticket.createdAt}
-                          metAt={ticket.firstResponseAt}
-                          isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
-                          onHoldStart={ticket.onHoldStart}
-                          totalPausedTime={ticket.totalPausedTime}
-                        />
-                        <SLATimer
-                          label="Res"
-                          deadline={fallbackResolutionDeadline}
-                          startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
-                          metAt={ticket.resolvedAt}
-                          isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
-                          onHoldStart={ticket.onHoldStart}
-                          totalPausedTime={ticket.totalPausedTime}
-                          waitUntil={ticket.firstResponseAt ?? null}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-500 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
-                          {(assignedAgent?.name || ticket.assignedToName || "U")[0].toUpperCase()}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground truncate max-w-[110px]" title={assignedAgent?.name || ticket.assignedToName || ticket.assignedTo || "Unassigned"}>
-                          {assignedAgent?.name || ticket.assignedToName || ticket.assignedTo || "Unassigned"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-                        <a href={`/tickets/${ticket.id}`} target="_blank" rel="noreferrer" className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors border border-transparent hover:border-blue-500/20" title="Open in New Tab">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                        <Link to={`/tickets/${ticket.id}`} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors border border-transparent hover:border-blue-500/20" title="Edit Ticket">
-                          <Edit className="w-3.5 h-3.5" />
-                        </Link>
-                        <button onClick={async (e) => {
-                          e.preventDefault();
-                          if (confirm(`Are you sure you want to delete ticket ${ticket.number}?`)) {
-                            await deleteDoc(doc(db, "tickets", ticket.id));
-                          }
-                        }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/20 cursor-pointer" title="Delete Ticket">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      ) : (
-        /* Render modern ops table view mode */
-        <div className="sn-card overflow-hidden p-0 border border-border/80 shadow-2xl rounded-2xl bg-card/60 backdrop-blur-md">
-          <div className="p-4 border-b border-border/60 flex items-center justify-between bg-muted/20 backdrop-blur-md">
-            <div className="text-sm font-bold">Operations Incident Log</div>
-            <div className="text-[10px] text-muted-foreground uppercase font-black tracking-wider">Total Active: {filteredTickets.length}</div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-muted/30 border-b border-border/60">
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Number</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Description</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Reporter</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Priority</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">State</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Category</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Group</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Engineer</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">SLA Status</th>
-                  <th className="p-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {filteredTickets.map((ticket, idx) => {
-                  const assignedAgent = allUsers.find(a => a.id === ticket.assignedTo) || agents.find(a => a.id === ticket.assignedTo);
-                  const p = ticket.priority ?? "4 - Low";
-                  const priorityBadge = p.includes("Critical") ? "bg-red-500/10 text-red-500 border border-red-500/20" :
-                    p.includes("High") ? "bg-orange-500/10 text-orange-500 border border-orange-500/20" :
-                      p.includes("Moderate") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
-                        "bg-blue-50 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30";
-
-                  const createdTime = ticket.createdAt?.seconds 
-                    ? new Date(ticket.createdAt.seconds * 1000) 
-                    : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
-
-                  const fallbackResponseDeadline = ticket.responseDeadline || 
-                    (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
-                      businessHours: ticket.businessHours,
-                      excludeWeekends: ticket.excludeWeekends,
-                      excludeHolidays: ticket.excludeHolidays
-                    }).toISOString() : undefined);
-
-                  const fallbackResolutionDeadline = ticket.resolutionDeadline || 
-                    (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
-                      businessHours: ticket.businessHours,
-                      excludeWeekends: ticket.excludeWeekends,
-                      excludeHolidays: ticket.excludeHolidays
-                    }).toISOString() : undefined);
-
-                  return (
-                    <tr key={ticket.id} onContextMenu={(e) => handleContextMenu(e, ticket)} className="hover:bg-blue-500/5 transition-colors font-outfit">
-                      <td className="p-3">
-                        <Link to={`/tickets/${ticket.id}`} className="font-mono text-xs font-bold text-blue-500 dark:text-blue-400 hover:underline">
-                          {ticket.number || `INC000${idx + 1}`}
-                        </Link>
-                      </td>
-                      <td className="p-3 text-xs font-medium text-foreground max-w-[180px] truncate" title={ticket.title}>{ticket.title}</td>
-                      <td className="p-3 text-xs text-muted-foreground truncate max-w-[110px]">{ticket.caller}</td>
-                      <td className="p-3">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider", priorityBadge)}>
-                            {p}
-                          </span>
-                          {(() => {
-                            const risk = getTicketsBreachRisk(ticket);
-                            if (!risk) return null;
-                            return (
-                              <span className={cn(
-                                "text-[8px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded border transition-all duration-300",
-                                risk.risk === "high" 
-                                  ? "bg-red-500/10 text-red-500 border-red-500/20 shadow-[0_0_8px_rgba(239,68,68,0.15)] animate-pulse"
-                                  : risk.risk === "medium"
-                                    ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                    : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                              )}>
-                                ⚠️ {risk.score}% Risk
-                              </span>
-                            );
-                          })()}
-                        </div>
-                      </td>
-                      <td className="p-3 text-xs font-semibold">{ticket.status}</td>
-                      <td className="p-3 text-xs text-muted-foreground">
-                        {ticket.category || ticket.incidentCategory || ticket.incident_category}
-                      </td>
-                      <td className="p-3 text-xs text-muted-foreground truncate max-w-[120px]">{ticket.assignmentGroup || "(empty)"}</td>
-                      <td className="p-3 text-xs font-medium">{assignedAgent?.name || ticket.assignedToName || ticket.assignedTo || "Unassigned"}</td>
-                      <td className="p-3">
-                        <div className="flex flex-col gap-1 bg-black/10 p-1.5 rounded-lg border border-white/5">
-                          <SLATimer
-                            label="Resp"
-                            deadline={fallbackResponseDeadline}
-                            startTime={ticket.responseSlaStartTime || ticket.createdAt}
-                            metAt={ticket.firstResponseAt}
-                            isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
-                            onHoldStart={ticket.onHoldStart}
-                            totalPausedTime={ticket.totalPausedTime}
-                          />
-                          <SLATimer
-                            label="Res"
-                            deadline={fallbackResolutionDeadline}
-                            startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
-                            metAt={ticket.resolvedAt}
-                            isPaused={ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor"}
-                            onHoldStart={ticket.onHoldStart}
-                            totalPausedTime={ticket.totalPausedTime}
-                            waitUntil={ticket.firstResponseAt ?? null}
-                          />
-                        </div>
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <a href={`/tickets/${ticket.id}`} target="_blank" rel="noreferrer" className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Open in New Tab">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                          <Link to={`/tickets/${ticket.id}`} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit Ticket">
-                            <Edit className="w-3.5 h-3.5" />
-                          </Link>
-                          <button onClick={async () => {
-                            if (confirm(`Are you sure you want to delete ticket ${ticket.number}?`)) {
-                              await deleteDoc(doc(db, "tickets", ticket.id));
-                            }
-                          }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer" title="Delete Ticket">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Create Ticket Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-          <div className="bg-[#090a15]/90 backdrop-blur-xl border border-blue-500/20 text-foreground bg-card rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-200 shadow-[0_15px_50px_rgba(0,0,0,0.5)]">
-            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/20 font-outfit">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-full">New Incident Feed</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {isFeatureVisible("button.cancel") && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={closeModal}
-                    className="border-white/10 text-white/80 hover:bg-white/5 hover:text-white rounded-xl cursor-pointer"
-                    disabled={isFeatureDisabled("button.cancel")}
-                  >
-                    Cancel
-                  </Button>
-                )}
-                {isFeatureVisible("button.submit") && (
-                  <Button
-                    size="sm"
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-[0_0_12px_rgba(37,99,235,0.3)] transition-all cursor-pointer"
-                    onClick={(e: any) => handleCreateTicket(e)}
-                    disabled={isSubmitting || isFeatureDisabled("button.submit")}
-                  >
-                    {isSubmitting ? "Orchestrating..." : "Submit Incident"}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateTicket} className="p-6 overflow-y-auto max-h-[85vh] dark-form-container">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
-                {/* Left Column */}
-                {isFeatureVisible("section.leftColumn") && (
-                  <div className="space-y-4">
-                    {/* Number */}
-                    {isFeatureVisible("field.number") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Number</label>
-                        <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-mono h-8"
-                          value={previewNumber}
-                        />
-                      </div>
-                    )}
-
-                    {/* Reporting User */}
-                    {isFeatureVisible("field.caller") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium uppercase leading-tight flex items-center justify-end gap-1">
-                          <span className="text-red-500">*</span> Reporting User
-                        </label>
-                        <div className="col-span-2 relative">
-                          <div className="flex gap-1">
-                            <input
-                              required={getFieldRequired("field.caller", true)}
-                              placeholder="Search for caller..."
-                              value={callerSearch || newTicket.caller}
-                              onChange={e => {
-                                setCallerSearch(e.target.value);
-                                setShowCallerResults(true);
-                                setNewTicket({ ...newTicket, caller: e.target.value });
-                              }}
-                              onFocus={() => setShowCallerResults(true)}
-                              className={getInputClassName("field.caller", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
-                              disabled={isFeatureDisabled("field.caller")}
-                              readOnly={isFeatureReadOnly("field.caller")}
-                            />
-                            {isFeatureVisible("button.searchCaller") && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => setShowCallerResults(!showCallerResults)}
-                                disabled={isFeatureDisabled("button.searchCaller")}
-                              >
-                                <Search className="w-3 h-3" />
-                              </Button>
-                            )}
-                          </div>
-                          {showCallerResults && callerSearch && !isFeatureDisabled("button.searchCaller") && (
-                            <div className="absolute z-50 w-full mt-1 bg-white border border-border rounded-md shadow-lg max-h-40 overflow-y-auto custom-scrollbar">
-                              {allUsers.filter(u =>
-                                u.name?.toLowerCase().includes(callerSearch.toLowerCase()) ||
-                                u.email?.toLowerCase().includes(callerSearch.toLowerCase())
-                              ).map(u => (
-                                <div
-                                  key={u.id}
-                                  className="p-2 hover:bg-sn-green/10 cursor-pointer text-xs"
-                                  onClick={() => {
-                                    setNewTicket({ ...newTicket, caller: u.name || u.email, callerEmail: u.email || "" });
-                                    setCallerSearch(u.name || u.email);
-                                    setShowCallerResults(false);
-                                  }}
-                                >
-                                  <div className="font-bold">{u.name}</div>
-                                  <div className="text-[10px] text-muted-foreground">{u.email}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Affected User */}
-                    {isFeatureVisible("field.affectedUser") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium uppercase leading-tight flex items-center justify-end gap-1">
-                          <span className="text-red-500">*</span> Affected User
-                        </label>
-                        <div className="col-span-2 relative">
-                          <div className="flex gap-1">
-                            <input
-                              required={getFieldRequired("field.affectedUser")}
-                              placeholder="Search affected user..."
-                              value={affectedSearch || newTicket.affectedUser || ''}
-                              onChange={e => {
-                                setAffectedSearch(e.target.value);
-                                setShowAffectedResults(true);
-                                setNewTicket({ ...newTicket, affectedUser: e.target.value });
-                              }}
-                              onFocus={() => setShowAffectedResults(true)}
-                              className={getInputClassName("field.affectedUser", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
-                              disabled={isFeatureDisabled("field.affectedUser")}
-                              readOnly={isFeatureReadOnly("field.affectedUser")}
-                            />
-                            {isFeatureVisible("button.searchAffectedUser") && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => setShowAffectedResults(!showAffectedResults)}
-                                disabled={isFeatureDisabled("button.searchAffectedUser")}
-                              >
-                                <Search className="w-3 h-3" />
-                              </Button>
-                            )}
-                          </div>
-                          {showAffectedResults && affectedSearch && !isFeatureDisabled("button.searchAffectedUser") && (
-                            <div className="absolute z-50 w-full mt-1 bg-white border border-border rounded-md shadow-lg max-h-40 overflow-y-auto custom-scrollbar">
-                              {allUsers.filter(u =>
-                                u.name?.toLowerCase().includes(affectedSearch.toLowerCase()) ||
-                                u.email?.toLowerCase().includes(affectedSearch.toLowerCase())
-                              ).map(u => (
-                                <div
-                                  key={u.id}
-                                  className="p-2 hover:bg-sn-green/10 cursor-pointer text-xs"
-                                  onClick={() => {
-                                    setNewTicket({ ...newTicket, affectedUser: u.name || u.email, affectedUserEmail: u.email || "" });
-                                    setAffectedSearch(u.name || u.email);
-                                    setShowAffectedResults(false);
-                                  }}
-                                >
-                                  <div className="font-bold">{u.name}</div>
-                                  <div className="text-[10px] text-muted-foreground">{u.email}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Watch list (CC) */}
-                    {isFeatureVisible("field.watchList") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Watch list</label>
-                        <div className="col-span-2 flex gap-1">
-                          <input
-                            value={newTicket.watchList}
-                            onChange={e => setNewTicket({ ...newTicket, watchList: e.target.value })}
-                            placeholder="Separate emails with commas"
-                            className={getInputClassName("field.watchList", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
-                            disabled={isFeatureDisabled("field.watchList")}
-                            readOnly={isFeatureReadOnly("field.watchList")}
-                          />
-                          {isFeatureVisible("button.watchListLookup") && (
-                            <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.watchListLookup")}><Users className="w-3 h-3" /></Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Business Phone */}
-                    {isFeatureVisible("field.businessPhone") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Business phone</label>
-                        <input
-                          value={newTicket.businessPhone}
-                          onChange={e => setNewTicket({ ...newTicket, businessPhone: e.target.value })}
-                          className={getInputClassName("field.businessPhone", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                          required={getFieldRequired("field.businessPhone")}
-                          disabled={isFeatureDisabled("field.businessPhone")}
-                          readOnly={isFeatureReadOnly("field.businessPhone")}
-                        />
-                      </div>
-                    )}
-
-                    {/* Location */}
-                    {isFeatureVisible("field.location") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Location</label>
-                        <div className="col-span-2 flex gap-1">
-                          <input
-                            value={newTicket.location}
-                            onChange={e => setNewTicket({ ...newTicket, location: e.target.value })}
-                            className={getInputClassName("field.location", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                            required={getFieldRequired("field.location")}
-                            disabled={isFeatureDisabled("field.location")}
-                            readOnly={isFeatureReadOnly("field.location")}
-                          />
-                          {isFeatureVisible("button.locationLookup") && (
-                            <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.locationLookup")}><Search className="w-3 h-3" /></Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Company */}
-                    {isFeatureVisible("field.company") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Company</label>
-                        <select
-                          value={newTicket.company}
-                          onChange={e => setNewTicket({ ...newTicket, company: e.target.value })}
-                          className={getInputClassName("field.company", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
-                          required={getFieldRequired("field.company")}
-                          disabled={isFeatureDisabled("field.company")}
-                        >
-                          <option value="">-- None --</option>
-                          {companies.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Category */}
-                    {isFeatureVisible("field.category") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
-                          <span className="text-red-500 font-bold">*</span> Category
-                        </label>
-                        <select
-                          required={getFieldRequired("field.category", true)}
-                          value={newTicket.category}
-                          onChange={e => {
-                            setNewTicket({
-                              ...newTicket,
-                              category: e.target.value,
-                              subcategory: "",
-                              service: ""
-                            });
-                          }}
-                          className={getInputClassName("field.category", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white")}
-                          disabled={isFeatureDisabled("field.category")}
-                        >
-                          <option value="">-- Select Category --</option>
-                          {activeCategories.map((item) => (
-                            <option key={item.id} value={item.name}>{item.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-
-                    {/* Subcategory */}
-                    {isFeatureVisible("field.subcategory") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
-                          <span className="text-red-500 font-bold">*</span> Subcategory
-                        </label>
-                        <select
-                          required={getFieldRequired("field.subcategory", true)}
-                          value={newTicket.subcategory}
-                          onChange={e => {
-                            setNewTicket({
-                              ...newTicket,
-                              subcategory: e.target.value,
-                              service: ""
-                            });
-                          }}
-                          className={getInputClassName("field.subcategory", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white disabled:opacity-50 disabled:bg-muted")}
-                          disabled={!newTicket.category || isFeatureDisabled("field.subcategory")}
-                        >
-                          <option value="">-- Select Subcategory --</option>
-                          {filteredSubcategories.map(s => (
-                            <option key={s.id} value={s.name}>{s.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Service */}
-                    {isFeatureVisible("field.service") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
-                          <span className="text-red-500 font-bold">*</span> Service
-                        </label>
-                        <select
-                          required={getFieldRequired("field.service", true)}
-                          value={newTicket.service}
-                          onChange={e => {
-                            setNewTicket({ ...newTicket, service: e.target.value });
-                          }}
-                          className={getInputClassName("field.service", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white disabled:opacity-50 disabled:bg-muted")}
-                          disabled={!newTicket.subcategory || isFeatureDisabled("field.service")}
-                        >
-                          <option value="">-- Select Service --</option>
-                          {filteredServiceProviders.map(sp => (
-                            <option key={sp.id} value={sp.name}>{sp.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Service Offering */}
-                    {isFeatureVisible("field.serviceOffering") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Service Offering</label>
-                        <input
-                          value={newTicket.serviceOffering}
-                          onChange={e => setNewTicket({ ...newTicket, serviceOffering: e.target.value })}
-                          className={getInputClassName("field.serviceOffering", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                          required={getFieldRequired("field.serviceOffering")}
-                          disabled={isFeatureDisabled("field.serviceOffering")}
-                          readOnly={isFeatureReadOnly("field.serviceOffering")}
-                        />
-                      </div>
-                    )}
-
-                    {/* Configuration Item */}
-                    {isFeatureVisible("field.configurationItem") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Configuration item</label>
-                        <div className="col-span-2 flex gap-1">
-                          <input
-                            value={newTicket.configurationItem}
-                            onChange={e => setNewTicket({ ...newTicket, configurationItem: e.target.value })}
-                            className={getInputClassName("field.configurationItem", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                            required={getFieldRequired("field.configurationItem")}
-                            disabled={isFeatureDisabled("field.configurationItem")}
-                            readOnly={isFeatureReadOnly("field.configurationItem")}
-                          />
-                          {isFeatureVisible("button.configurationItemLookup") && (
-                            <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.configurationItemLookup")}><Search className="w-3 h-3" /></Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Computer Name */}
-                    {isFeatureVisible("field.computerName") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Computer Name</label>
-                        <div className="col-span-2 flex gap-1">
-                          <input
-                            value={newTicket.computerName}
-                            onChange={e => setNewTicket({ ...newTicket, computerName: e.target.value })}
-                            className={getInputClassName("field.computerName", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                            required={getFieldRequired("field.computerName")}
-                            disabled={isFeatureDisabled("field.computerName")}
-                            readOnly={isFeatureReadOnly("field.computerName")}
-                          />
-                          {isFeatureVisible("button.computerNameLookup") && (
-                            <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.computerNameLookup")}><Search className="w-3 h-3" /></Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Impact */}
-                    {isFeatureVisible("field.impact") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Impact</label>
-                        <select
-                          value={newTicket.impact}
-                          onChange={e => setNewTicket({ ...newTicket, impact: e.target.value })}
-                          className={getInputClassName("field.impact", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8 transition-colors")}
-                          required={getFieldRequired("field.impact")}
-                          disabled={isFeatureDisabled("field.impact")}
-                        >
-                          <option>1 - High</option>
-                          <option>2 - Medium</option>
-                          <option>3 - Low</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Urgency */}
-                    {isFeatureVisible("field.urgency") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Urgency</label>
-                        <select
-                          value={newTicket.urgency}
-                          onChange={e => setNewTicket({ ...newTicket, urgency: e.target.value })}
-                          className={getInputClassName("field.urgency", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8 transition-colors")}
-                          required={getFieldRequired("field.urgency")}
-                          disabled={isFeatureDisabled("field.urgency")}
-                        >
-                          <option>1 - High</option>
-                          <option>2 - Medium</option>
-                          <option>3 - Low</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Priority */}
-                    {isFeatureVisible("field.priority") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Priority</label>
-                        <input
-                          disabled
-                          className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-bold text-blue-600 h-8"
-                          value={calculatePriority(newTicket.impact, newTicket.urgency)}
-                        />
-                      </div>
-                    )}
-
-                    {/* Knowledge Article Used */}
-                    {isFeatureVisible("field.knowledgeArticleUsed") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Knowledge Article Used?</label>
-                        <input
-                          type="checkbox"
-                          checked={newTicket.knowledgeArticleUsed}
-                          onChange={e => setNewTicket({ ...newTicket, knowledgeArticleUsed: e.target.checked })}
-                          className="w-4 h-4 accent-sn-green"
-                          disabled={isFeatureDisabled("field.knowledgeArticleUsed")}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Right Column */}
-                {isFeatureVisible("section.rightColumn") && (
-                  <div className="space-y-4">
-                    {/* Opened */}
-                    {isFeatureVisible("field.opened") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened</label>
-                        <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
-                          value={new Date().toLocaleString()}
-                        />
-                      </div>
-                    )}
-
-                    {/* Opened by */}
-                    {isFeatureVisible("field.openedBy") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened by</label>
-                        <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
-                          value={profile?.name || user?.email || ""}
-                        />
-                      </div>
-                    )}
-
-                    {/* State */}
-                    {isFeatureVisible("field.state") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">State</label>
-                        <select
-                          disabled
-                          className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs outline-none h-8"
-                        >
-                          <option>New</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Assignment group */}
-                    {isFeatureVisible("field.assignmentGroup") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assignment group</label>
-                        <div className="col-span-2 flex gap-1">
-                          <select
-                            value={newTicket.assignmentGroup}
-                            onChange={e => {
-                              const group = visibleGroups.find(g => g.name === e.target.value);
-                              setNewTicket({ ...newTicket, assignmentGroup: e.target.value, selectedGroupId: group?.id || "", assignedTo: "" });
-                            }}
-                            className={getInputClassName("field.assignmentGroup", "flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8")}
-                            required={getFieldRequired("field.assignmentGroup")}
-                            disabled={isFeatureDisabled("field.assignmentGroup")}
-                          >
-                            <option value="">-- Auto Assign --</option>
-                            {displayGroups.map((item) => (
-                              <option key={item.id} value={item.name}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                          {isFeatureVisible("button.assignmentGroupLookup") && (
-                            <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.assignmentGroupLookup")}><Search className="w-3 h-3" /></Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Assigned to */}
-                    {isFeatureVisible("field.assignedTo") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assigned to</label>
-                        <div className="col-span-2 flex gap-1">
-                          <select
-                            value={newTicket.assignedTo}
-                            onChange={e => setNewTicket({ ...newTicket, assignedTo: e.target.value })}
-                            className={getInputClassName("field.assignedTo", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                            required={getFieldRequired("field.assignedTo")}
-                            disabled={isFeatureDisabled("field.assignedTo")}
-                          >
-                            <option value="">-- Select Member --</option>
-                            {visibleMembers.map(m => (
-                              <option key={m.id} value={m.id}>{m.name || m.userName}</option>
-                            ))}
-                          </select>
-                          {isFeatureVisible("button.assignedToLookup") && (
-                            <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.assignedToLookup")}><Search className="w-3 h-3" /></Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Original Assignment Group */}
-                    {isFeatureVisible("field.originalAssignmentGroup") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Original Assignment Group</label>
-                        <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
-                          value={newTicket.assignmentGroup || ""}
-                        />
-                      </div>
-                    )}
-
-                    {/* Acknowledged */}
-                    {isFeatureVisible("field.acknowledged") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Acknowledged</label>
-                        <input
-                          type="checkbox"
-                          checked={newTicket.acknowledged}
-                          onChange={e => setNewTicket({ ...newTicket, acknowledged: e.target.checked })}
-                          className="w-4 h-4 accent-sn-green"
-                          disabled={isFeatureDisabled("field.acknowledged")}
-                        />
-                      </div>
-                    )}
-
-                    {/* Channel */}
-                    {isFeatureVisible("field.channel") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Channel</label>
-                        <select
-                          value={newTicket.channel}
-                          onChange={e => setNewTicket({ ...newTicket, channel: e.target.value })}
-                          className={getInputClassName("field.channel", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                          required={getFieldRequired("field.channel")}
-                          disabled={isFeatureDisabled("field.channel")}
-                        >
-                          <option>Self-service</option>
-                          <option>Email</option>
-                          <option>Phone</option>
-                          <option>Chat</option>
-                          <option>Portal</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Password Reset? */}
-                    {isFeatureVisible("field.passwordReset") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Password Reset?</label>
-                        <select
-                          value={newTicket.passwordReset}
-                          onChange={e => setNewTicket({ ...newTicket, passwordReset: e.target.value })}
-                          className={getInputClassName("field.passwordReset", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                          required={getFieldRequired("field.passwordReset")}
-                          disabled={isFeatureDisabled("field.passwordReset")}
-                        >
-                          <option>No</option>
-                          <option>Yes</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Rackspace Ticket No */}
-                    {isFeatureVisible("field.rackspaceTicketNo") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Rackspace Ticket No</label>
-                        <input
-                          value={newTicket.rackspaceTicketNo}
-                          onChange={e => setNewTicket({ ...newTicket, rackspaceTicketNo: e.target.value })}
-                          className={getInputClassName("field.rackspaceTicketNo", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                          required={getFieldRequired("field.rackspaceTicketNo")}
-                          disabled={isFeatureDisabled("field.rackspaceTicketNo")}
-                          readOnly={isFeatureReadOnly("field.rackspaceTicketNo")}
-                        />
-                      </div>
-                    )}
-
-                    {/* Additional Information */}
-                    {isFeatureVisible("field.additionalInformation") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Additional Information</label>
-                        <input
-                          value={newTicket.additionalInformation}
-                          onChange={e => setNewTicket({ ...newTicket, additionalInformation: e.target.value })}
-                          className={getInputClassName("field.additionalInformation", "col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                          required={getFieldRequired("field.additionalInformation")}
-                          disabled={isFeatureDisabled("field.additionalInformation")}
-                          readOnly={isFeatureReadOnly("field.additionalInformation")}
-                        />
-                      </div>
-                    )}
-
-                    {/* SLA due */}
-                    {isFeatureVisible("field.slaDue") && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">SLA due</label>
-                        <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-mono h-8"
-                          value={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleString()}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Full Width Fields */}
-              {isFeatureVisible("section.fullWidth") && (
-                <div className="mt-8 space-y-4">
-                  <div className="grid grid-cols-6 items-center gap-4">
-                    {isFeatureVisible("field.title") && (
-                      <>
-                        <label className="text-[11px] text-right font-medium uppercase leading-tight flex items-center justify-end gap-1">
-                          <span className="text-red-500">*</span> Short description
-                        </label>
-                        <div className="col-span-5 flex gap-2">
-                          <input
-                            required={getFieldRequired("field.title", true)}
-                            value={newTicket.title}
-                            onChange={e => setNewTicket({ ...newTicket, title: e.target.value })}
-                            className={getInputClassName("field.title", "flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
-                            disabled={isFeatureDisabled("field.title")}
-                            readOnly={isFeatureReadOnly("field.title")}
-                          />
-                          {isFeatureVisible("button.aiAutofill") && (
-                            <Button
-                              type="button"
-                              onClick={handleAIAssist}
-                              disabled={isAiLoading || isFeatureDisabled("button.aiAutofill")}
-                              className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-[11px]"
-                            >
-                              {isAiLoading ? "Analyzing..." : "Autofill with AI"}
-                            </Button>
-                          )}
-                          {isFeatureVisible("button.dictation") && (
-                            <button
-                              type="button"
-                              onClick={() => speechControllerRef.current?.toggle()}
-                              disabled={!speechSupported || isFeatureDisabled("button.dictation")}
-                              className={cn(
-                                "p-1.5 hover:bg-muted rounded transition-colors ml-1 border border-border h-8 w-8 flex items-center justify-center",
-                                speechListening && "bg-sn-green/15 text-sn-green border-sn-green"
-                              )}
-                              title={speechListening ? "Stop Dictation" : "Dictation"}
-                            >
-                              <Mic className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  {isFeatureVisible("field.description") && (
-                    <div className="grid grid-cols-6 items-start gap-4">
-                      <label className="text-[11px] text-right font-medium uppercase leading-tight mt-1">Description</label>
-                      <div className="col-span-5 space-y-1.5">
-                        <textarea
-                          rows={4}
-                          value={newTicket.description}
-                          onChange={e => setNewTicket({ ...newTicket, description: e.target.value })}
-                          className={cn(
-                            getInputClassName("field.description", "w-full p-1.5 border rounded text-xs focus:ring-1 focus:ring-sn-green resize-none h-32 transition-all"),
-                            suggestedSolution ? 'border-purple-400 ring-1 ring-purple-300 bg-purple-50' : 'border-border'
-                          )}
-                          placeholder="Describe the issue in detail... or use Autofill with AI above"
-                          required={getFieldRequired("field.description")}
-                          disabled={isFeatureDisabled("field.description")}
-                          readOnly={isFeatureReadOnly("field.description")}
-                        />
-                        {speechListening && (
-                          <div className="text-[10px] text-sn-green font-medium">
-                            Listening{speechLiveText ? `: ${speechLiveText}` : "..."}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Suggested Solution Box */}
-              {suggestedSolution && isFeatureVisible("section.suggestedSolution") && (
-                <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                  <h4 className="text-purple-800 font-semibold mb-2 flex items-center gap-2">
-                    <span>✨</span> AI filled your description
-                    <span className="text-[10px] font-normal text-purple-500 ml-auto">You can edit it above</span>
-                  </h4>
-                  <p className="text-xs text-purple-700 italic line-clamp-3">{suggestedSolution}</p>
-                  {isFeatureVisible("button.dismissSuggestedSolution") && (
-                    <button type="button" onClick={() => setSuggestedSolution(null)}
-                      disabled={isFeatureDisabled("button.dismissSuggestedSolution")}
-                      className="mt-2 text-[10px] text-purple-400 hover:text-purple-600 underline disabled:opacity-50">
-                      Dismiss
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Modal Footer */}
-              {isFeatureVisible("section.footer") && (
-                <div className="flex justify-end gap-3 pt-6 border-t border-border mt-8">
-                  {isFeatureVisible("button.cancel") && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={closeModal}
-                      disabled={isFeatureDisabled("button.cancel")}
-                      className="px-6 h-8 text-[11px] font-bold uppercase tracking-wider"
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                  {isFeatureVisible("button.submit") && (
-                    <Button
-                      type="submit"
-                      disabled={isSubmitting || isFeatureDisabled("button.submit")}
-                      className="bg-sn-green text-sn-dark hover:bg-sn-green/90 px-8 h-8 text-[11px] font-bold uppercase tracking-wider shadow-sm disabled:opacity-50"
-                    >
-                      {isSubmitting ? "Submitting..." : "Submit"}
-                    </Button>
-                  )}
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
-      )}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          items={[
-            {
-              label: "Open Incident",
-              icon: <Edit size={14} />,
-              onClick: () => navigate(`/tickets/${contextMenu.ticketId}`)
-            },
-            {
-              label: "Open in New Tab",
-              icon: <ExternalLink size={14} />,
-              onClick: () => window.open(`/tickets/${contextMenu.ticketId}`, "_blank")
-            },
-            {
-              label: "Copy Incident Key",
-              icon: <span className="text-[10px] font-mono">ID</span>,
-              onClick: () => {
-                navigator.clipboard.writeText(contextMenu.ticketNumber);
-              }
-            },
-            {
-              label: "Delete Incident",
-              icon: <Trash2 size={14} className="text-red-500" />,
-              disabled: profile?.role !== "admin" && profile?.role !== "super_admin",
-              onClick: async () => {
-                if (confirm(`Are you sure you want to delete ticket ${contextMenu.ticketNumber}?`)) {
-                  await deleteDoc(doc(db, "tickets", contextMenu.ticketId));
-                }
-              }
-            }
-          ]}
-        />
-      )}
-    </div>
-  );
+ const { user, profile } = useAuth();
+ const navigate = useNavigate();
+ const { categories, subcategories, serviceProviders, groups, members } = useServiceCatalog();
+ const [searchParams] = useSearchParams();
+ const [viewMode, setViewMode] = useState<'hybrid' | 'table'>('hybrid');
+ const [showFilters, setShowFilters] = useState(false);
+ const filter = searchParams.get("filter");
+ const action = searchParams.get("action");
+ const [contextMenu, setContextMenu] = useState<{ x: number, y: number, ticketId: string, ticketNumber: string } | null>(null);
+
+ const handleContextMenu = (e: React.MouseEvent, ticket: any) => {
+ e.preventDefault();
+ setContextMenu({
+ x: e.clientX,
+ y: e.clientY,
+ ticketId: ticket.id,
+ ticketNumber: ticket.number || ticket.id
+ });
+ };
+
+ const [tickets, setTickets] = useState<any[]>([]);
+ const [agents, setAgents] = useState<any[]>([]);
+ const [allUsers, setAllUsers] = useState<any[]>([]);
+ const [incidentCategories, setIncidentCategories] = useState<string[]>([]);
+ const [dynamicFields, setDynamicFields] = useState<any[]>([]);
+ const [dynamicOptions, setDynamicOptions] = useState<Record<string, any[]>>({});
+ const [callerSearch, setCallerSearch] = useState("");
+ const [affectedSearch, setAffectedSearch] = useState("");
+ const [showCallerResults, setShowCallerResults] = useState(false);
+ const [showAffectedResults, setShowAffectedResults] = useState(false);
+ const [isModalOpen, setIsModalOpen] = useState(false);
+ const [previewNumber, setPreviewNumber] = useState("");
+
+ const openModal = () => {
+ speechControllerRef.current?.stop();
+ setSpeechLiveText("");
+ setPreviewNumber(`INC${Math.floor(1000000 + Math.random() * 9000000)}`);
+ const companyId = searchParams.get("companyId");
+ setNewTicket(prev => ({
+ ...prev,
+ caller: profile?.name || user?.email ||"",
+ company: companyId ||""
+ }));
+ setCallerSearch(profile?.name || user?.email ||"");
+ setIsModalOpen(true);
+ };
+ const closeModal = () => {
+ speechControllerRef.current?.stop();
+ setSpeechLiveText("");
+ setIsModalOpen(false);
+ };
+ const [isSubmitting, setIsSubmitting] = useState(false);
+ const [isAiLoading, setIsAiLoading] = useState(false);
+ const [suggestedSolution, setSuggestedSolution] = useState<string | null>(null);
+ const [speechLiveText, setSpeechLiveText] = useState("");
+ const [speechListening, setSpeechListening] = useState(false);
+ const [speechSupported, setSpeechSupported] = useState(true);
+ const speechControllerRef = useRef<ReturnType<typeof createSpeechController> | null>(null);
+
+ useEffect(() => {
+ if (action ==="new") {
+ openModal();
+ }
+ }, [action]);
+
+ // Fetch active incident categories and options dynamically
+ useEffect(() => {
+ fetch("/api/incident-categories?active_only=true")
+ .then(r => r.json())
+ .then(async (data) => {
+ if (Array.isArray(data)) {
+ setIncidentCategories(data.map((c: any) => c.name));
+ setDynamicFields(data);
+
+ // Fetch options for each dynamic field
+ const optionsMap: Record<string, any[]> = {};
+ await Promise.all(
+ data.map(async (cat: any) => {
+ try {
+ const res = await fetch(`/api/incident-categories/options?category_id=${cat.id}&active_only=true`);
+ if (res.ok) {
+ const opts = await res.json();
+ optionsMap[cat.id] = opts;
+ }
+ } catch (e) {
+ console.error("Error loading options for category", cat.id, e);
+ }
+ })
+ );
+ setDynamicOptions(optionsMap);
+ }
+ })
+ .catch(() => {
+ // Fallback to defaults if API unavailable
+ setIncidentCategories([
+"Hardware Issue","Software Issue","Network Issue","System Access",
+"Security Issue","Login Problem","Email Issue","Performance Issue",
+"Service Request","Other"
+ ]);
+ });
+ }, []);
+
+ useEffect(() => {
+ const controller = createSpeechController({
+ onInterim: (text) => {
+ setSpeechLiveText(text);
+ setNewTicket(prev => ({ ...prev, description: text }));
+ },
+ onFinal: (text) => {
+ setSpeechLiveText("");
+ setNewTicket(prev => ({ ...prev, description: text }));
+ },
+ onStateChange: (listening) => {
+ setSpeechListening(listening);
+ if (!listening) {
+ setSpeechLiveText("");
+ }
+ },
+ onError: (message) => {
+ setSpeechListening(false);
+ alert(message);
+ }
+ });
+
+ speechControllerRef.current = controller;
+ setSpeechSupported(controller.supported);
+
+ return () => {
+ controller.stop();
+ };
+ }, []);
+
+ const [newTicket, setNewTicket] = useState({
+ ...CREATE_INCIDENT_FORM_DEFAULTS,
+ caller: profile?.name || user?.email ||"",
+ callerEmail: user?.email ||"",
+ incidentCategory:""
+ });
+
+ const [assignedTo, setAssignedTo] = useState("");
+ const [slaPolicies, setSlaPolicies] = useState<any[]>([]);
+ // DYNAMIC DROPDOWNS from database (via useServiceCatalog hook)
+ const activeCategories = categories.filter(c => c.status === 'active');
+ const selectedCategoryObj = activeCategories.find(c => c.name === newTicket.category);
+ const filteredSubcategories = subcategories.filter(s => s.status === 'active' && (!selectedCategoryObj || s.categoryId === selectedCategoryObj.id));
+ const selectedSubcategoryObj = filteredSubcategories.find(s => s.name === newTicket.subcategory);
+ const filteredServiceProviders = serviceProviders.filter(sp => sp.status === 'active' && (!selectedSubcategoryObj || sp.subcategoryId === selectedSubcategoryObj.id));
+
+ const visibleGroups = groups;
+ const displayGroups = visibleGroups;
+
+ // DYNAMIC GROUP FILTERING (Requirement: Only users belonging to the selected group, or all agents if no group selected)
+ const selectedGroupObj = groups.find(g => g.name === newTicket.assignmentGroup);
+ const visibleMembers = selectedGroupObj?.memberIds
+ ? allUsers.filter(u => selectedGroupObj.memberIds?.includes(u.id) || selectedGroupObj.memberIds?.includes(u.uid))
+ : agents;
+
+ // Realistic Catalog initialization handled via state defaults
+
+ // Removed auto-reset logic for subcategories/providers/groups to maintain independence
+
+ useEffect(() => {
+ const q = query(collection(db,"sla_policies"), where("isActive","==", true));
+ const unsubscribe = onSnapshot(q, (snapshot) => {
+ setSlaPolicies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+ }, (error) => {
+ handleFirestoreError(error, OperationType.LIST,"sla_policies");
+ });
+ return unsubscribe;
+ }, []);
+
+ const [companies, setCompanies] = useState<any[]>([]);
+ const [companyFeaturePermissions, setCompanyFeaturePermissions] = useState<Record<string, any>>({});
+ useEffect(() => {
+ const q = query(collection(db,"companies"), orderBy("name"));
+ const unsubscribe = onSnapshot(q, (snapshot) => {
+ setCompanies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+ });
+ return unsubscribe;
+ }, []);
+
+ useEffect(() => {
+ if (!newTicket.company) {
+ setCompanyFeaturePermissions({});
+ return;
+ }
+
+ const permissionsQuery = query(
+ collection(db,"company_feature_permissions"),
+ where("companyId","==", newTicket.company)
+ );
+
+ const unsubscribe = onSnapshot(permissionsQuery, (snapshot) => {
+ const nextPermissions = snapshot.docs.reduce((acc, permissionDoc) => {
+ const data = permissionDoc.data() as any;
+ acc[data.featureId] = {
+ ...DEFAULT_COMPANY_FEATURE_PERMISSION,
+ ...data,
+ };
+ return acc;
+ }, {} as Record<string, any>);
+
+ setCompanyFeaturePermissions(nextPermissions);
+ });
+
+ return unsubscribe;
+ }, [newTicket.company]);
+
+ useEffect(() => {
+ if (!user || !profile) return;
+
+ const ticketsRef = collection(db,"tickets");
+
+ // All users (including regular users) see all open tickets
+ let q = query(ticketsRef, orderBy("createdAt","desc"));
+
+ const unsubscribe = onSnapshot(q, (snapshot) => {
+ const ticketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+ setTickets(ticketsData);
+ }, (error) => {
+ console.error("Firestore Error in Tickets List:", error);
+ // We don't throw here to avoid crashing the UI, but we log the error
+ });
+
+ return unsubscribe;
+ }, [user, profile]);
+
+ useEffect(() => {
+ const q = query(collection(db,"users"));
+ const unsubscribe = onSnapshot(q, (snapshot) => {
+ const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+ setAllUsers(usersList);
+ setAgents(usersList.filter((u: any) => u.role ==="agent" || u.role ==="admin" || u.role ==="super_admin" || u.role ==="ultra_super_admin"));
+ }, (error) => {
+ handleFirestoreError(error, OperationType.LIST,"users");
+ });
+ return unsubscribe;
+ }, []);
+
+ const formatDateTime = (date: any) => {
+ if (!date) return"-";
+ if (typeof date.toDate ==="function") {
+ return date.toDate().toISOString();
+ }
+ if (typeof date ==="string") {
+ return date;
+ }
+ if (date.seconds) {
+ return new Date(date.seconds * 1000).toISOString();
+ }
+ return undefined;
+ };
+
+ const [columnFilters, setColumnFilters] = useState({
+ number:"",
+ title:"",
+ caller:"",
+ priority:"",
+ status:"",
+ category:"",
+ assignmentGroup:"",
+ assignedTo:""
+ });
+
+ const filteredTickets = tickets.filter(t => {
+ // Top-level quick filters
+ const now = Date.now();
+ const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
+ const thirtyDaysAgo = now - 30 * 24 * 3600 * 1000;
+
+ const getTs = (tick: any) => {
+ const c = tick.createdAt;
+ if (!c) return 0;
+ if (c?.seconds) return c.seconds * 1000;
+ if (typeof c ==="string") return new Date(c).getTime();
+ return 0;
+ };
+
+ if (filter ==="assigned_to_me" && t.assignedTo !== user?.uid && t.assignedTo !== profile?.name && t.assignedToName !== profile?.name) return false;
+ if (filter ==="created_by_me" && t.createdBy !== user?.uid) return false;
+ if (filter ==="in_progress" && t.status !=="In Progress") return false;
+ if (filter ==="closed" && t.status !=="Closed") return false;
+ if (filter ==="pending" && t.status !=="Pending" && t.status !=="On Hold") return false;
+ if (filter ==="open" && (t.status ==="Resolved" || t.status ==="Closed" || t.status ==="Canceled")) return false;
+ if (filter ==="unassigned" && t.assignedTo) return false;
+ if (filter ==="resolved" && t.status !=="Resolved" && t.status !=="Closed") return false;
+ if (filter ==="critical_open" && (t.status ==="Resolved" || t.status ==="Closed" || t.status ==="Canceled" || !t.priority?.includes("Critical"))) return false;
+ if (filter ==="overdue" && (t.status ==="Resolved" || t.status ==="Closed" || t.status ==="Canceled" || !t.resolutionDeadline || new Date(t.resolutionDeadline).getTime() > now)) return false;
+ if (filter ==="stale_7" && (t.status ==="Resolved" || t.status ==="Closed" || t.status ==="Canceled" || getTs(t) >= sevenDaysAgo)) return false;
+ if (filter ==="older_30" && (t.status ==="Resolved" || t.status ==="Closed" || t.status ==="Canceled" || getTs(t) >= thirtyDaysAgo)) return false;
+ const slaDelayState = getEffectiveSlaDelayState(t);
+ if (filter ==="sla_25" && !slaDelayState.thresholdReached) return false;
+ if (filter ==="sla_justification" && !slaDelayState.awaitingInitialJustification) return false;
+ if (filter ==="sla_owner_response" && !slaDelayState.awaitingOwnerResponse) return false;
+ if (filter ==="sla_escalated" && !(slaDelayState.meta.escalationLevel > 0)) return false;
+ if (filter ==="sla_breached_rca" && !(slaDelayState.meta.breachAt || slaDelayState.awaitingRca)) return false;
+
+ // Column-level search filters (case-insensitive)
+ const matches = (val: string, filterVal: string) => !filterVal || (val ||"").toLowerCase().includes(filterVal.toLowerCase());
+
+ return (
+ matches(t.number, columnFilters.number) &&
+ matches(t.title, columnFilters.title) &&
+ matches(t.caller, columnFilters.caller) &&
+ matches(t.priority, columnFilters.priority) &&
+ matches(t.status, columnFilters.status) &&
+ (matches(t.category, columnFilters.category) || matches(t.incidentCategory || t.incident_category ||"", columnFilters.category)) &&
+ matches(t.assignmentGroup, columnFilters.assignmentGroup) &&
+ matches(agents.find(a => a.id === t.assignedTo)?.name || t.assignedToName || t.assignedTo ||"", columnFilters.assignedTo)
+ );
+ });
+
+ const calculatePriority = (impact: string, urgency: string) => {
+ const i = parseInt(impact[0]);
+ const u = parseInt(urgency[0]);
+ const sum = i + u;
+ if (sum <= 2) return"1 - Critical";
+ if (sum === 3) return"2 - High";
+ if (sum === 4) return"3 - Moderate";
+ return"4 - Low";
+ };
+
+ const getTicketsBreachRisk = (ticket: any) => {
+ if (!ticket || ticket.status ==="Resolved" || ticket.status ==="Closed" || ticket.status ==="Canceled") return null;
+
+ const deadlineStr = ticket.resolutionDeadline || ticket.resolution_deadline;
+ if (!deadlineStr) return null;
+
+ const deadline = new Date(deadlineStr).getTime();
+ const now = Date.now();
+ const createdTimeMs = ticket.createdAt?.seconds 
+ ? ticket.createdAt.seconds * 1000 
+ : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
+
+ if (now >= deadline) return { risk:"breached", score: 100, label:"Breached" };
+
+ const totalTime = deadline - createdTimeMs;
+ const timeElapsed = now - createdTimeMs;
+ const ratio = totalTime > 0 ? timeElapsed / totalTime : 0;
+
+ const workloadFactor = ticket.assignedTo ? 1.1 : 1.25;
+
+ const categoryMultipliers: Record<string, number> = {
+"Network": 1.2,
+"Database": 1.15,
+"Software": 1.1,
+"Hardware": 1.05
+ };
+ const catMultiplier = categoryMultipliers[ticket.category ||""] || 1.0;
+
+ const rawScore = ratio * 100 * workloadFactor * catMultiplier;
+ const score = Math.min(99, Math.round(rawScore));
+
+ if (score > 80) return { risk:"high", score, label:"High Risk" };
+ if (score > 55) return { risk:"medium", score, label:"Medium Risk" };
+ return { risk:"low", score, label:"Low Risk" };
+ };
+
+ const getFeaturePermission = (featureId: string) => ({
+ ...DEFAULT_COMPANY_FEATURE_PERMISSION,
+ ...(companyFeaturePermissions[featureId] || {}),
+ });
+
+ const isFeatureVisible = (featureId: string) => {
+ const permission = getFeaturePermission(featureId);
+ return permission.canView && permission.status !=="disabled";
+ };
+
+ const isFeatureDisabled = (featureId: string) => {
+ const permission = getFeaturePermission(featureId);
+ return permission.status ==="disabled" || !permission.canUse;
+ };
+
+ const isFeatureReadOnly = (featureId: string) => {
+ const permission = getFeaturePermission(featureId);
+ return permission.status ==="disabled" || !permission.canUse || !permission.canEdit;
+ };
+
+ const isFeatureMandatory = (featureId: string) => getFeaturePermission(featureId).isMandatory;
+
+ const getFieldRequired = (featureId: string, baseRequired = false) => baseRequired || isFeatureMandatory(featureId);
+
+ const getInputClassName = (featureId: string, baseClassName: string) =>
+ cn(baseClassName, isFeatureReadOnly(featureId) &&"bg-muted/30 cursor-not-allowed");
+
+ const handleAIAssist = async () => {
+ const shortDesc = newTicket.title;
+ if (!shortDesc) {
+ alert("Please enter a Short Description first, then click Autofill with AI.");
+ return;
+ }
+
+ setIsAiLoading(true);
+ setSuggestedSolution(null);
+
+ try {
+ // Run classify + description generation in parallel using our server endpoints
+ const [classifyRes, suggestRes] = await Promise.all([
+ fetch('/api/ai/classify', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ text: shortDesc }),
+ }),
+ fetch('/api/ai/suggest', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ text: shortDesc }),
+ }),
+ ]);
+
+ const classData = await classifyRes.json();
+ const suggestData = await suggestRes.json();
+
+ if (!classifyRes.ok) throw new Error(classData.error ||"Classification failed");
+ if (!suggestRes.ok) throw new Error(suggestData.error ||"Suggestion failed");
+
+ setNewTicket(prev => ({
+ ...prev,
+ category: classData.category || prev.category,
+ impact: classData.priority === 'Critical' || classData.priority === 'High' ? '1 - High' : classData.priority === 'Medium' ? '2 - Medium' : '3 - Low',
+ urgency: classData.priority === 'Critical' || classData.priority === 'High' ? '1 - High' : classData.priority === 'Medium' ? '2 - Medium' : '3 - Low',
+ description: suggestData.suggestion || prev.description,
+ }));
+
+ if (suggestData.suggestion) {
+ setSuggestedSolution(suggestData.suggestion);
+ }
+ } catch (e) {
+ console.error(e);
+ alert("AI autofill failed. Please fill in the description manually.");
+ } finally {
+ setIsAiLoading(false);
+ }
+ };
+
+ const handleCreateTicket = async (e: React.FormEvent) => {
+ e.preventDefault();
+ if (isSubmitting) return;
+
+ if (!user) {
+ alert("You must be logged in to create a ticket.");
+ return;
+ }
+
+ const hasCategoryAccess = ["admin","super_admin","ultra_super_admin"].includes(profile?.role ||"") ||
+ ["arun.g@technosprint.net","swedhasris@gmail.com","ulter@technosprint.net","admin@technosprint.net","admin@connectit.local","demo-admin@connectit.local","demo-super_admin@connectit.local","demo-ultra_super_admin@connectit.local"].includes(user?.email || profile?.email ||"");
+
+ // Only validate truly required fields: caller and title are always required.
+ // category, subcategory, service are required only when their feature is visible.
+ // description, company, assignmentGroup, assignedTo are optional unless explicitly made mandatory.
+ const coreRequiredFieldChecks = [
+ { key:"field.caller", label:"Reporting User", value: newTicket.caller, alwaysRequired: true },
+ { key:"field.title", label:"Short description", value: newTicket.title, alwaysRequired: true },
+ { key:"field.category", label:"Category", value: newTicket.category, alwaysRequired: true },
+ { key:"field.subcategory", label:"Subcategory", value: newTicket.subcategory, alwaysRequired: true },
+ { key:"field.service", label:"Service", value: newTicket.service, alwaysRequired: true },
+ ];
+
+ const missingRequiredField = coreRequiredFieldChecks.find(({ key, value, alwaysRequired }) =>
+ isFeatureVisible(key) && (alwaysRequired || isFeatureMandatory(key)) && !value
+ );
+
+ if (missingRequiredField) {
+ alert(`Please fill in the required field: ${missingRequiredField.label}.`);
+ return;
+ }
+
+ setIsSubmitting(true);
+ console.log("Submitting new ticket:", newTicket);
+
+ try {
+ let priority = calculatePriority(newTicket.impact, newTicket.urgency);
+
+ // Find matching SLA policy (Prioritize Department + Priority + Category, then Department + Priority, then Priority)
+ const matchingPolicy = slaPolicies.find(p => p.priority === priority && p.department === newTicket.assignmentGroup && p.category === newTicket.category)
+ || slaPolicies.find(p => p.priority === priority && p.department === newTicket.assignmentGroup)
+ || slaPolicies.find(p => p.priority === priority && (p.category === newTicket.category || !p.category))
+ || slaPolicies.find(p => p.priority === priority)
+ || { responseTimeHours: 4, resolutionTimeHours: 24 }; // Fallback
+
+ const now = new Date();
+ const responseDeadline = calculateSLADeadline(now, (matchingPolicy.responseTimeHours || 4), {
+ businessHours: matchingPolicy.businessHours,
+ excludeWeekends: matchingPolicy.excludeWeekends,
+ excludeHolidays: matchingPolicy.excludeHolidays
+ });
+ // Resolution deadline is null initially as it doesn't start until first response
+ const resolutionDeadline = new Date(now.getTime() + ((matchingPolicy.responseTimeHours || 4) + (matchingPolicy.resolutionTimeHours || 24)) * 60 * 60 * 1000);
+
+ const ticketNumber = `INC${Math.floor(1000000 + Math.random() * 9000000)}`;
+
+ // Immediate Breach Check (SLA Engine simulation for creation)
+ let responseSlaStatus ="In Progress";
+ let resolutionSlaStatus ="In Progress";
+
+ if (responseDeadline.getTime() <= now.getTime()) {
+ priority ="1 - Critical";
+ responseSlaStatus ="Breached";
+ }
+
+ // Workflow Automation: Auto-assignment based on category
+ const assignmentGroup = newTicket.assignmentGroup || visibleGroups[0]?.name ||"Service Desk";
+
+ // Determine assigned user name if applicable (fix: check both id and userId fields)
+ const assignedUserName = newTicket.assignedTo
+ ? visibleMembers.find(m => m.id === newTicket.assignedTo)?.name
+ || visibleMembers.find(m => m.id === newTicket.assignedTo)?.userName
+ || visibleMembers.find(m => m.userId === newTicket.assignedTo)?.userName
+ || agents.find(a => a.id === newTicket.assignedTo)?.name
+ || allUsers.find(u => u.id === newTicket.assignedTo)?.name
+ ||""
+ :"";
+
+ const ticketData = {
+ ...newTicket,
+ incidentCategory: hasCategoryAccess ? (newTicket.incidentCategory || null) : null,
+ incident_category: hasCategoryAccess ? (newTicket.incidentCategory || null) : null,
+ number: ticketNumber,
+ assignmentGroup,
+ assignedToName: assignedUserName,
+ priority,
+ status: newTicket.assignedTo ?"Assigned" :"New",
+ createdBy: user.uid,
+ createdAt: serverTimestamp(),
+ updatedAt: serverTimestamp(),
+ responseDeadline: responseDeadline.toISOString(),
+ resolutionDeadline: null,
+ responseSlaStartTime: now.toISOString(),
+ resolutionSlaStartTime: null,
+ responseSlaStatus,
+ resolutionSlaStatus:"Pending",
+ slaResolutionHours: matchingPolicy.resolutionTimeHours || 24,
+ slaPolicy: matchingPolicy.name ||"Default SLA",
+ sla_name: matchingPolicy.name ||"Default SLA",
+ slaDelayMeta: null,
+ slaDelayLogs: [],
+ totalPausedTime: 0,
+ history: [{ action:"Ticket Created (Response SLA Started)", timestamp: now.toISOString(), user: profile?.name || user.email }]
+ };
+
+ console.log("Final ticket data payload:", ticketData);
+
+ // Construct API payload matching POST /api/tickets
+ const apiPayload = {
+ title: newTicket.title,
+ description: newTicket.description,
+ caller: newTicket.caller || user?.email ||"",
+ callerEmail: newTicket.callerEmail || user?.email ||"",
+ incidentCategory: newTicket.incidentCategory,
+ subcategory: newTicket.subcategory,
+ service: newTicket.service,
+ serviceOffering: newTicket.serviceOffering,
+ cmdbItem: newTicket.cmdbItem,
+ status: newTicket.status ||"New",
+ priority: newTicket.priority ||"4 - Low",
+ impact: newTicket.impact ||"3 - Low",
+ urgency: newTicket.urgency ||"3 - Low",
+ channel: newTicket.channel ||"Self-service",
+ assignmentGroup: newTicket.assignmentGroup,
+ assignedTo: newTicket.assignedTo,
+ assignedToName: assignedUserName,
+ createdBy: user?.uid,
+ createdByName: profile?.name || user?.email ||"",
+ companyId: newTicket.company,
+ affectedUser: newTicket.affectedUser,
+ affectedUserEmail: newTicket.affectedUserEmail,
+ reportingUserEmail: newTicket.callerEmail,
+ customFields: newTicket.customFields,
+ watchList: newTicket.watchList,
+ // SLA tracking fields
+ responseDeadline: responseDeadline.toISOString(),
+ resolutionDeadline: null,
+ responseSlaStartTime: now.toISOString(),
+ resolutionSlaStartTime: null,
+ responseSlaStatus,
+ resolutionSlaStatus:"Pending",
+ slaResolutionHours: matchingPolicy.resolutionTimeHours || 24,
+ slaPolicy: matchingPolicy.name ||"Default SLA",
+ sla_name: matchingPolicy.name ||"Default SLA",
+ slaDelayMeta: null,
+ slaDelayLogs: [],
+ totalPausedTime: 0
+ };
+
+ console.log("Sending ticket creation payload to API:", apiPayload);
+
+ const res = await fetch("/api/tickets/create", {
+ method:"POST",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify(apiPayload)
+ });
+ 
+ if (!res.ok) {
+ throw new Error("Failed to create ticket via API:" + await res.text());
+ }
+ 
+ const createdData = await res.json();
+ const ticketId = createdData.id;
+ console.log("Ticket created successfully with ID:", ticketId);
+
+ closeModal();
+ alert(`Ticket ${ticketNumber} has been created successfully.`);
+
+ setNewTicket({
+ ...CREATE_INCIDENT_FORM_DEFAULTS,
+ caller:"",
+ incidentCategory:""
+ });
+ setSpeechLiveText("");
+ } catch (error: any) {
+ console.error("CRITICAL: Error creating ticket:", error);
+ alert(`Failed to create ticket: ${error.message ||"Unknown error"}. Please check your connection and try again.`);
+ } finally {
+ setIsSubmitting(false);
+ }
+ };
+
+ const updateStatus = async (ticketId: string, newStatus: string) => {
+ const ticketRef = doc(db,"tickets", ticketId);
+ const ticket = tickets.find(t => t.id === ticketId);
+ if (!ticket) return;
+ await updateDoc(ticketRef, {
+ status: newStatus,
+ updatedAt: serverTimestamp(),
+ history: [
+ ...(ticket?.history || []),
+ { action: `Status updated to ${newStatus}`, timestamp: new Date().toISOString(), user: profile?.name || user?.email }
+ ]
+ });
+
+ // Sync to MySQL via REST API
+ try {
+ await fetch(`/api/tickets/${ticketId}`, {
+ method:"PUT",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({ status: newStatus })
+ });
+ } catch (e) {
+ console.error("Failed to sync status update to API:", e);
+ }
+
+ // Dispatch real-time notification
+ try {
+ fetch("/api/notifications/dispatch", {
+ method:"POST",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({
+ ticket: {
+ id: ticketId,
+ ticket_number: ticket.number,
+ created_by: ticket.createdBy,
+ created_by_name: ticket.createdByName || ticket.caller,
+ assigned_to: ticket.assignedTo || null,
+ assigned_to_name: ticket.assignedToName || null,
+ status: newStatus,
+ priority: ticket.priority
+ },
+ actorId: user?.uid ||"System",
+ actorName: profile?.name || user?.email ||"System",
+ type:"update",
+ oldStatus: ticket.status,
+ newStatus: newStatus
+ })
+ });
+ } catch (e) {
+ console.error("Failed to dispatch status notification:", e);
+ }
+ };
+
+ const updateAssignment = async (ticketId: string, agentId: string) => {
+ const ticketRef = doc(db,"tickets", ticketId);
+ const ticket = tickets.find(t => t.id === ticketId);
+ if (!ticket) return;
+ const agent = agents.find(a => a.id === agentId);
+ const newStatus = agentId ?"Assigned" :"New";
+ await updateDoc(ticketRef, {
+ assignedTo: agentId,
+ assignedToName: agent?.name ||"",
+ status: newStatus,
+ updatedAt: serverTimestamp(),
+ history: [
+ ...(ticket?.history || []),
+ { action: `Assigned to ${agent?.name ||"None"}`, timestamp: new Date().toISOString(), user: profile?.name || user?.email }
+ ]
+ });
+
+ // Sync to MySQL via REST API
+ try {
+ await fetch(`/api/tickets/${ticketId}`, {
+ method:"PUT",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({ assignedTo: agentId, assignedToName: agent?.name ||"", status: newStatus })
+ });
+ } catch (e) {
+ console.error("Failed to sync assignment update to API:", e);
+ }
+
+ // Dispatch real-time notification
+ try {
+ fetch("/api/notifications/dispatch", {
+ method:"POST",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({
+ ticket: {
+ id: ticketId,
+ ticket_number: ticket.number,
+ created_by: ticket.createdBy,
+ created_by_name: ticket.createdByName || ticket.caller,
+ assigned_to: agentId || null,
+ assigned_to_name: agent?.name || null,
+ status: newStatus,
+ priority: ticket.priority
+ },
+ actorId: user?.uid ||"System",
+ actorName: profile?.name || user?.email ||"System",
+ type:"update",
+ oldAssignee: ticket.assignedTo,
+ newAssignee: agentId
+ })
+ });
+ } catch (e) {
+ console.error("Failed to dispatch assignment notification:", e);
+ }
+ };
+
+ return (
+ <div className="standard-page-layout">
+ {/* Workspace Header */}
+ <div className="standard-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40">
+ <div>
+ <h1 className="page-title">
+ {filter ==="assigned_to_me" ?"My Assigned Tickets" :
+ filter ==="open" ?"Open Incidents" :
+ filter ==="unassigned" ?"Open - Unassigned" :
+ filter ==="resolved" ?"Resolved Incidents" :
+ filter ==="created_by_me" ?"My Created Tickets" :
+ filter ==="in_progress" ?"In Progress Incidents" :
+ filter ==="closed" ?"Closed Incidents" :
+ filter ==="pending" ?"Pending Incidents" :
+ filter ==="overdue" ?"Overdue Incidents" :
+ filter ==="critical_open" ?"Critical Open Incidents" :
+"All Incidents"}
+ </h1>
+ <p className="page-description">Real-time incident streams & service request orchestration.</p>
+ </div>
+ <div className="flex items-center gap-2">
+ {/* Layout viewMode toggle buttons */}
+ <div className="bg-muted/30 dark:bg-white/5 border border-border/40 p-1 rounded-xl flex gap-1 items-center">
+ <button
+ onClick={() => setViewMode('hybrid')}
+ className={cn(
+"px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+ viewMode === 'hybrid'
+ ?"bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20 shadow-[0_0_10px_rgba(37,99,235,0.15)]"
+ :"text-muted-foreground hover:text-foreground"
+ )}
+ >
+ Grid View
+ </button>
+ <button
+ onClick={() => setViewMode('table')}
+ className={cn(
+"px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+ viewMode === 'table'
+ ?"bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-900/30 shadow-[0_0_10px_rgba(37,99,235,0.15)]"
+ :"text-muted-foreground hover:text-foreground"
+ )}
+ >
+ Ops Table
+ </button>
+ </div>
+
+ <Button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] cursor-pointer">
+ <Plus className="w-4 h-4 mr-2" /> Launch Incident
+ </Button>
+ </div>
+ </div>
+
+ {/* Control Toolbar */}
+ <div className="glass-panel rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+ <div className="flex items-center gap-3 w-full md:w-auto">
+ <div className="relative w-full md:w-64">
+ <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+ <input
+ type="text"
+ placeholder="Search description..."
+ value={columnFilters.title}
+ onChange={e => setColumnFilters({ ...columnFilters, title: e.target.value })}
+ className="pl-9 pr-4 py-2 bg-background/50 border border-border/80 rounded-xl text-xs w-full focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all"
+ />
+ </div>
+ <Button
+ variant="outline"
+ size="sm"
+ onClick={() => setShowFilters(!showFilters)}
+ className={cn(
+"rounded-xl cursor-pointer text-xs font-bold transition-all shrink-0",
+ showFilters ?"bg-blue-500/10 border-blue-500 text-blue-500 dark:text-blue-400" :""
+ )}
+ >
+ <Filter className="w-3.5 h-3.5 mr-2" /> Advanced Filter
+ </Button>
+ </div>
+ <div className="text-xs text-muted-foreground shrink-0 font-bold">Showing {filteredTickets.length} incidents</div>
+ </div>
+
+ {/* Quick Filters Drawer */}
+ <div className={cn(
+"glass-panel rounded-2xl p-5 border border-border/80 transition-all duration-300 shadow-lg",
+ showFilters ?"block animate-in slide-in-from-top duration-200" :"hidden"
+ )}>
+ <h3 className="text-[10px] font-semibold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-3.5">Workspace Filters</h3>
+ <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Incident ID</label>
+ <input value={columnFilters.number} onChange={e => setColumnFilters({ ...columnFilters, number: e.target.value })} placeholder="e.g. INC481" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Description</label>
+ <input value={columnFilters.title} onChange={e => setColumnFilters({ ...columnFilters, title: e.target.value })} placeholder="e.g. Database crash" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Reporting User</label>
+ <input value={columnFilters.caller} onChange={e => setColumnFilters({ ...columnFilters, caller: e.target.value })} placeholder="e.g. Alice" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Priority</label>
+ <select value={columnFilters.priority} onChange={e => setColumnFilters({ ...columnFilters, priority: e.target.value })} className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400">
+ <option value="">All Priorities</option>
+ <option value="1 - Critical">1 - Critical</option>
+ <option value="2 - High">2 - High</option>
+ <option value="3 - Moderate">3 - Moderate</option>
+ <option value="4 - Low">4 - Low</option>
+ </select>
+ </div>
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Incident State</label>
+ <input value={columnFilters.status} onChange={e => setColumnFilters({ ...columnFilters, status: e.target.value })} placeholder="e.g. In Progress" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Category</label>
+ <input value={columnFilters.category} onChange={e => setColumnFilters({ ...columnFilters, category: e.target.value })} placeholder="e.g. Hardware" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Assignment Group</label>
+ <input value={columnFilters.assignmentGroup} onChange={e => setColumnFilters({ ...columnFilters, assignmentGroup: e.target.value })} placeholder="e.g. Service Desk" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-muted-foreground font-semibold">Assigned Engineer</label>
+ <input value={columnFilters.assignedTo} onChange={e => setColumnFilters({ ...columnFilters, assignedTo: e.target.value })} placeholder="e.g. Agent Smith" className="w-full bg-background/50 border border-border/80 rounded-xl px-3 py-2 text-xs outline-none focus:border-cyan-400" />
+ </div>
+ </div>
+ <div className="flex justify-end gap-2 mt-4">
+ <Button size="sm" variant="outline" onClick={() => setColumnFilters({ number:"", title:"", caller:"", priority:"", status:"", category:"", assignmentGroup:"", assignedTo:"" })} className="rounded-xl">Reset Filters</Button>
+ <Button size="sm" onClick={() => setShowFilters(false)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl">Apply</Button>
+ </div>
+ </div>
+
+ {/* Main Ticket Feed */}
+ {viewMode === 'hybrid' ? (
+ <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+ {filteredTickets.length === 0 ? (
+ <div className="col-span-full py-16 text-center text-muted-foreground bg-white/20 dark:bg-black/10 backdrop-blur-md rounded-2xl border border-dashed border-border p-8">
+ No incidents found matching current filters.
+ </div>
+ ) : (
+ filteredTickets.map((ticket, idx) => {
+ const assignedAgent = allUsers.find(a => a.id === ticket.assignedTo) || agents.find(a => a.id === ticket.assignedTo);
+ const p = ticket.priority ??"4 - Low";
+ const priorityClass = p.includes("Critical") ?"priority-glow-critical border-l-4 border-l-red-500" :
+ p.includes("High") ?"priority-glow-high border-l-4 border-l-orange-500" :
+ p.includes("Moderate") ?"priority-glow-moderate border-l-4 border-l-emerald-500" :"priority-glow-low border-l-4 border-l-blue-500";
+ const priorityBadge = p.includes("Critical") ?"bg-red-500/10 text-red-500 border border-red-500/20" :
+ p.includes("High") ?"bg-orange-500/10 text-orange-500 border border-orange-500/20" :
+ p.includes("Moderate") ?"bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+"bg-blue-500/10 text-blue-500 border border-blue-500/20";
+
+ const createdTime = ticket.createdAt?.seconds 
+ ? new Date(ticket.createdAt.seconds * 1000) 
+ : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
+
+ const fallbackResponseDeadline = ticket.responseDeadline || 
+ (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString() : undefined);
+
+ const fallbackResolutionDeadline = ticket.resolutionDeadline || 
+ (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString() : undefined);
+
+ return (
+ <div key={ticket.id} onContextMenu={(e) => handleContextMenu(e, ticket)} className={cn("glass-panel rounded-2xl p-5 flex flex-col justify-between border border-border/80 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-blue-500/30 group", priorityClass)}>
+ <div>
+ <div className="flex items-center justify-between mb-3.5">
+ <Link to={`/tickets/${ticket.id}`} className="text-[10px] font-semibold uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 px-2 py-0.5 rounded border border-blue-500/20 hover:underline">
+ {ticket.number || `INC000${idx + 1}`}
+ </Link>
+ <span className={cn("text-[9px] uppercase tracking-widest font-semibold px-2 py-0.5 rounded-lg", priorityBadge)}>
+ {p}
+ </span>
+ </div>
+
+ {/* AI Breach Predictor Badge */}
+ {(() => {
+ const risk = getTicketsBreachRisk(ticket);
+ if (!risk) return null;
+ return (
+ <div className="mb-2 flex items-center justify-between">
+ <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">AI Breach Copilot</span>
+ <span className={cn(
+"text-[9px] uppercase tracking-widest font-semibold px-2 py-0.5 rounded border transition-all duration-300",
+ risk.risk ==="high" 
+ ?"bg-red-500/10 text-red-500 border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.15)] animate-pulse"
+ : risk.risk ==="medium"
+ ?"bg-amber-500/10 text-amber-500 border-amber-500/30"
+ :"bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+ )}>
+ ⚠️ {risk.score}% Risk
+ </span>
+ </div>
+ );
+ })()}
+
+ <Link to={`/tickets/${ticket.id}`} className="block hover:underline">
+ <h4 className="font-bold text-sm text-foreground line-clamp-2 mb-2 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" title={ticket.title}>
+ {ticket.title}
+ </h4>
+ </Link>
+
+ <div className="text-[10px] text-muted-foreground space-y-1.5 my-3 bg-muted/30 dark:bg-black/10 p-2.5 rounded-xl border border-border/30 dark:border-white/5">
+ <div className="flex justify-between"><span className="font-semibold uppercase tracking-wider text-muted-foreground text-[8px]">Reporting User:</span> <span className="text-foreground font-medium truncate max-w-[150px]">{ticket.caller}</span></div>
+ <div className="flex justify-between">
+ <span className="font-semibold uppercase tracking-wider text-muted-foreground text-[8px]">Category:</span>
+ <span className="text-foreground font-medium flex items-center gap-1">
+ 📌 {ticket.category || ticket.incidentCategory || ticket.incident_category}
+ </span>
+ </div>
+ <div className="flex justify-between"><span className="font-semibold uppercase tracking-wider text-muted-foreground text-[8px]">Group:</span> <span className="text-foreground font-medium truncate max-w-[150px]">{ticket.assignmentGroup ||"(empty)"}</span></div>
+ </div>
+
+ </div>
+
+ <div className="space-y-3.5 mt-2 border-t border-border/40 pt-3">
+ <div className="flex items-center justify-between gap-2">
+ <div className="flex flex-col gap-1 w-full bg-muted/20 dark:bg-black/15 p-2 rounded-xl border border-border/30 dark:border-white/5">
+ <SLATimer
+ label="Resp"
+ deadline={fallbackResponseDeadline}
+ startTime={ticket.responseSlaStartTime || ticket.createdAt}
+ metAt={ticket.firstResponseAt}
+ isPaused={ticket.status ==="On Hold" || ticket.status ==="Waiting for Customer" || ticket.status ==="Awaiting User" || ticket.status ==="Awaiting Vendor"}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ />
+ <SLATimer
+ label="Res"
+ deadline={fallbackResolutionDeadline}
+ startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
+ metAt={ticket.resolvedAt}
+ isPaused={ticket.status ==="On Hold" || ticket.status ==="Waiting for Customer" || ticket.status ==="Awaiting User" || ticket.status ==="Awaiting Vendor"}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ waitUntil={ticket.firstResponseAt ?? null}
+ />
+ </div>
+ </div>
+
+ <div className="flex items-center justify-between">
+ <div className="flex items-center gap-1.5">
+ <div className="w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-500 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
+ {(assignedAgent?.name || ticket.assignedToName ||"U")[0].toUpperCase()}
+ </div>
+ <span className="text-[10px] text-muted-foreground truncate max-w-[110px]" title={assignedAgent?.name || ticket.assignedToName || ticket.assignedTo ||"Unassigned"}>
+ {assignedAgent?.name || ticket.assignedToName || ticket.assignedTo ||"Unassigned"}
+ </span>
+ </div>
+
+ <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+ <a href={`/tickets/${ticket.id}`} target="_blank" rel="noreferrer" className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors border border-transparent hover:border-blue-500/20" title="Open in New Tab">
+ <ExternalLink className="w-3.5 h-3.5" />
+ </a>
+ <Link to={`/tickets/${ticket.id}`} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors border border-transparent hover:border-blue-500/20" title="Edit Ticket">
+ <Edit className="w-3.5 h-3.5" />
+ </Link>
+ <button onClick={async (e) => {
+ e.preventDefault();
+ if (confirm(`Are you sure you want to delete ticket ${ticket.number}?`)) {
+ await deleteDoc(doc(db,"tickets", ticket.id));
+ }
+ }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/20 cursor-pointer" title="Delete Ticket">
+ <Trash2 className="w-3.5 h-3.5" />
+ </button>
+ </div>
+ </div>
+ </div>
+ </div>
+ );
+ })
+ )}
+ </div>
+ ) : (
+ /* Render modern ops table view mode */
+ <div className="sn-card overflow-hidden p-0 border border-border/80 shadow-2xl rounded-2xl bg-card/60 backdrop-blur-md">
+ <div className="p-4 border-b border-border/60 flex items-center justify-between bg-muted/20 backdrop-blur-md">
+ <div className="text-sm font-bold">Operations Incident Log</div>
+ <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Total Active: {filteredTickets.length}</div>
+ </div>
+ <div className="overflow-x-auto">
+ <table className="w-full text-left border-collapse">
+ <thead>
+ <tr className="bg-muted/30 border-b border-border/60">
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Number</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Description</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Reporter</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Priority</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">State</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Category</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Group</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Engineer</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">SLA Status</th>
+ <th className="p-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground text-right">Actions</th>
+ </tr>
+ </thead>
+ <tbody className="divide-y divide-border/40">
+ {filteredTickets.map((ticket, idx) => {
+ const assignedAgent = allUsers.find(a => a.id === ticket.assignedTo) || agents.find(a => a.id === ticket.assignedTo);
+ const p = ticket.priority ??"4 - Low";
+ const priorityBadge = p.includes("Critical") ?"bg-red-500/10 text-red-500 border border-red-500/20" :
+ p.includes("High") ?"bg-orange-500/10 text-orange-500 border border-orange-500/20" :
+ p.includes("Moderate") ?"bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+"bg-blue-50 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30";
+
+ const createdTime = ticket.createdAt?.seconds 
+ ? new Date(ticket.createdAt.seconds * 1000) 
+ : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
+
+ const fallbackResponseDeadline = ticket.responseDeadline || 
+ (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString() : undefined);
+
+ const fallbackResolutionDeadline = ticket.resolutionDeadline || 
+ (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString() : undefined);
+
+ return (
+ <tr key={ticket.id} onContextMenu={(e) => handleContextMenu(e, ticket)} className="hover:bg-blue-500/5 transition-colors">
+ <td className="p-3">
+ <Link to={`/tickets/${ticket.id}`} className="text-xs font-bold text-blue-500 dark:text-blue-400 hover:underline">
+ {ticket.number || `INC000${idx + 1}`}
+ </Link>
+ </td>
+ <td className="p-3 text-xs font-medium text-foreground max-w-[180px] truncate" title={ticket.title}>{ticket.title}</td>
+ <td className="p-3 text-xs text-muted-foreground truncate max-w-[110px]">{ticket.caller}</td>
+ <td className="p-3">
+ <div className="flex flex-col gap-1 items-start">
+ <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider", priorityBadge)}>
+ {p}
+ </span>
+ {(() => {
+ const risk = getTicketsBreachRisk(ticket);
+ if (!risk) return null;
+ return (
+ <span className={cn(
+"text-[8px] uppercase tracking-widest font-semibold px-1.5 py-0.5 rounded border transition-all duration-300",
+ risk.risk ==="high" 
+ ?"bg-red-500/10 text-red-500 border-red-500/20 shadow-[0_0_8px_rgba(239,68,68,0.15)] animate-pulse"
+ : risk.risk ==="medium"
+ ?"bg-amber-500/10 text-amber-500 border-amber-500/20"
+ :"bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+ )}>
+ ⚠️ {risk.score}% Risk
+ </span>
+ );
+ })()}
+ </div>
+ </td>
+ <td className="p-3 text-xs font-semibold">{ticket.status}</td>
+ <td className="p-3 text-xs text-muted-foreground">
+ {ticket.category || ticket.incidentCategory || ticket.incident_category}
+ </td>
+ <td className="p-3 text-xs text-muted-foreground truncate max-w-[120px]">{ticket.assignmentGroup ||"(empty)"}</td>
+ <td className="p-3 text-xs font-medium">{assignedAgent?.name || ticket.assignedToName || ticket.assignedTo ||"Unassigned"}</td>
+ <td className="p-3">
+ <div className="flex flex-col gap-1 bg-black/10 p-1.5 rounded-lg border border-white/5">
+ <SLATimer
+ label="Resp"
+ deadline={fallbackResponseDeadline}
+ startTime={ticket.responseSlaStartTime || ticket.createdAt}
+ metAt={ticket.firstResponseAt}
+ isPaused={ticket.status ==="On Hold" || ticket.status ==="Waiting for Customer" || ticket.status ==="Awaiting User" || ticket.status ==="Awaiting Vendor"}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ />
+ <SLATimer
+ label="Res"
+ deadline={fallbackResolutionDeadline}
+ startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
+ metAt={ticket.resolvedAt}
+ isPaused={ticket.status ==="On Hold" || ticket.status ==="Waiting for Customer" || ticket.status ==="Awaiting User" || ticket.status ==="Awaiting Vendor"}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ waitUntil={ticket.firstResponseAt ?? null}
+ />
+ </div>
+ </td>
+ <td className="p-3 text-right">
+ <div className="flex items-center justify-end gap-1.5">
+ <a href={`/tickets/${ticket.id}`} target="_blank" rel="noreferrer" className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Open in New Tab">
+ <ExternalLink className="w-3.5 h-3.5" />
+ </a>
+ <Link to={`/tickets/${ticket.id}`} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Edit Ticket">
+ <Edit className="w-3.5 h-3.5" />
+ </Link>
+ <button onClick={async () => {
+ if (confirm(`Are you sure you want to delete ticket ${ticket.number}?`)) {
+ await deleteDoc(doc(db,"tickets", ticket.id));
+ }
+ }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer" title="Delete Ticket">
+ <Trash2 className="w-3.5 h-3.5" />
+ </button>
+ </div>
+ </td>
+ </tr>
+ );
+ })}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ )}
+
+ {/* Create Ticket Modal */}
+ {isModalOpen && (
+ <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+ <div className="bg-[#090a15]/90 backdrop-blur-xl border border-blue-500/20 text-foreground bg-card rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-200 shadow-[0_15px_50px_rgba(0,0,0,0.5)]">
+ <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/20">
+ <div className="flex items-center gap-2">
+ <span className="text-[10px] font-semibold uppercase tracking-widest text-blue-500 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-full">New Incident Feed</span>
+ </div>
+ <div className="flex items-center gap-2">
+ {isFeatureVisible("button.cancel") && (
+ <Button
+ variant="outline"
+ size="sm"
+ onClick={closeModal}
+ className="border-white/10 text-white/80 hover:bg-white/5 hover:text-white rounded-xl cursor-pointer"
+ disabled={isFeatureDisabled("button.cancel")}
+ >
+ Cancel
+ </Button>
+ )}
+ {isFeatureVisible("button.submit") && (
+ <Button
+ size="sm"
+ className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-[0_0_12px_rgba(37,99,235,0.3)] transition-all cursor-pointer"
+ onClick={(e: any) => handleCreateTicket(e)}
+ disabled={isSubmitting || isFeatureDisabled("button.submit")}
+ >
+ {isSubmitting ?"Orchestrating..." :"Submit Incident"}
+ </Button>
+ )}
+ </div>
+ </div>
+
+ <form onSubmit={handleCreateTicket} className="p-6 overflow-y-auto max-h-[85vh] dark-form-container">
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
+ {/* Left Column */}
+ {isFeatureVisible("section.leftColumn") && (
+ <div className="space-y-4">
+ {/* Number */}
+ {isFeatureVisible("field.number") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Number</label>
+ <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
+ value={previewNumber}
+ />
+ </div>
+ )}
+
+ {/* Reporting User */}
+ {isFeatureVisible("field.caller") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium uppercase leading-tight flex items-center justify-end gap-1">
+ <span className="text-red-500">*</span> Reporting User
+ </label>
+ <div className="col-span-2 relative">
+ <div className="flex gap-1">
+ <input
+ required={getFieldRequired("field.caller", true)}
+ placeholder="Search for caller..."
+ value={callerSearch || newTicket.caller}
+ onChange={e => {
+ setCallerSearch(e.target.value);
+ setShowCallerResults(true);
+ setNewTicket({ ...newTicket, caller: e.target.value });
+ }}
+ onFocus={() => setShowCallerResults(true)}
+ className={getInputClassName("field.caller","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
+ disabled={isFeatureDisabled("field.caller")}
+ readOnly={isFeatureReadOnly("field.caller")}
+ />
+ {isFeatureVisible("button.searchCaller") && (
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ className="h-8 w-8 p-0"
+ onClick={() => setShowCallerResults(!showCallerResults)}
+ disabled={isFeatureDisabled("button.searchCaller")}
+ >
+ <Search className="w-3 h-3" />
+ </Button>
+ )}
+ </div>
+ {showCallerResults && callerSearch && !isFeatureDisabled("button.searchCaller") && (
+ <div className="absolute z-50 w-full mt-1 bg-white border border-border rounded-md shadow-lg max-h-40 overflow-y-auto custom-scrollbar">
+ {allUsers.filter(u =>
+ u.name?.toLowerCase().includes(callerSearch.toLowerCase()) ||
+ u.email?.toLowerCase().includes(callerSearch.toLowerCase())
+ ).map(u => (
+ <div
+ key={u.id}
+ className="p-2 hover:bg-sn-green/10 cursor-pointer text-xs"
+ onClick={() => {
+ setNewTicket({ ...newTicket, caller: u.name || u.email, callerEmail: u.email ||"" });
+ setCallerSearch(u.name || u.email);
+ setShowCallerResults(false);
+ }}
+ >
+ <div className="font-bold">{u.name}</div>
+ <div className="text-[10px] text-muted-foreground">{u.email}</div>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Affected User */}
+ {isFeatureVisible("field.affectedUser") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium uppercase leading-tight flex items-center justify-end gap-1">
+ <span className="text-red-500">*</span> Affected User
+ </label>
+ <div className="col-span-2 relative">
+ <div className="flex gap-1">
+ <input
+ required={getFieldRequired("field.affectedUser")}
+ placeholder="Search affected user..."
+ value={affectedSearch || newTicket.affectedUser || ''}
+ onChange={e => {
+ setAffectedSearch(e.target.value);
+ setShowAffectedResults(true);
+ setNewTicket({ ...newTicket, affectedUser: e.target.value });
+ }}
+ onFocus={() => setShowAffectedResults(true)}
+ className={getInputClassName("field.affectedUser","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
+ disabled={isFeatureDisabled("field.affectedUser")}
+ readOnly={isFeatureReadOnly("field.affectedUser")}
+ />
+ {isFeatureVisible("button.searchAffectedUser") && (
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ className="h-8 w-8 p-0"
+ onClick={() => setShowAffectedResults(!showAffectedResults)}
+ disabled={isFeatureDisabled("button.searchAffectedUser")}
+ >
+ <Search className="w-3 h-3" />
+ </Button>
+ )}
+ </div>
+ {showAffectedResults && affectedSearch && !isFeatureDisabled("button.searchAffectedUser") && (
+ <div className="absolute z-50 w-full mt-1 bg-white border border-border rounded-md shadow-lg max-h-40 overflow-y-auto custom-scrollbar">
+ {allUsers.filter(u =>
+ u.name?.toLowerCase().includes(affectedSearch.toLowerCase()) ||
+ u.email?.toLowerCase().includes(affectedSearch.toLowerCase())
+ ).map(u => (
+ <div
+ key={u.id}
+ className="p-2 hover:bg-sn-green/10 cursor-pointer text-xs"
+ onClick={() => {
+ setNewTicket({ ...newTicket, affectedUser: u.name || u.email, affectedUserEmail: u.email ||"" });
+ setAffectedSearch(u.name || u.email);
+ setShowAffectedResults(false);
+ }}
+ >
+ <div className="font-bold">{u.name}</div>
+ <div className="text-[10px] text-muted-foreground">{u.email}</div>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Watch list (CC) */}
+ {isFeatureVisible("field.watchList") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Watch list</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ value={newTicket.watchList}
+ onChange={e => setNewTicket({ ...newTicket, watchList: e.target.value })}
+ placeholder="Separate emails with commas"
+ className={getInputClassName("field.watchList","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
+ disabled={isFeatureDisabled("field.watchList")}
+ readOnly={isFeatureReadOnly("field.watchList")}
+ />
+ {isFeatureVisible("button.watchListLookup") && (
+ <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.watchListLookup")}><Users className="w-3 h-3" /></Button>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Business Phone */}
+ {isFeatureVisible("field.businessPhone") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Business phone</label>
+ <input
+ value={newTicket.businessPhone}
+ onChange={e => setNewTicket({ ...newTicket, businessPhone: e.target.value })}
+ className={getInputClassName("field.businessPhone","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.businessPhone")}
+ disabled={isFeatureDisabled("field.businessPhone")}
+ readOnly={isFeatureReadOnly("field.businessPhone")}
+ />
+ </div>
+ )}
+
+ {/* Location */}
+ {isFeatureVisible("field.location") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Location</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ value={newTicket.location}
+ onChange={e => setNewTicket({ ...newTicket, location: e.target.value })}
+ className={getInputClassName("field.location","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.location")}
+ disabled={isFeatureDisabled("field.location")}
+ readOnly={isFeatureReadOnly("field.location")}
+ />
+ {isFeatureVisible("button.locationLookup") && (
+ <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.locationLookup")}><Search className="w-3 h-3" /></Button>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Company */}
+ {isFeatureVisible("field.company") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Company</label>
+ <select
+ value={newTicket.company}
+ onChange={e => setNewTicket({ ...newTicket, company: e.target.value })}
+ className={getInputClassName("field.company","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8")}
+ required={getFieldRequired("field.company")}
+ disabled={isFeatureDisabled("field.company")}
+ >
+ <option value="">-- None --</option>
+ {companies.map(c => (
+ <option key={c.id} value={c.id}>{c.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
+ {/* Category */}
+ {isFeatureVisible("field.category") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
+ <span className="text-red-500 font-bold">*</span> Category
+ </label>
+ <select
+ required={getFieldRequired("field.category", true)}
+ value={newTicket.category}
+ onChange={e => {
+ setNewTicket({
+ ...newTicket,
+ category: e.target.value,
+ subcategory:"",
+ service:""
+ });
+ }}
+ className={getInputClassName("field.category","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white")}
+ disabled={isFeatureDisabled("field.category")}
+ >
+ <option value="">-- Select Category --</option>
+ {activeCategories.map((item) => (
+ <option key={item.id} value={item.name}>{item.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
+
+ {/* Subcategory */}
+ {isFeatureVisible("field.subcategory") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
+ <span className="text-red-500 font-bold">*</span> Subcategory
+ </label>
+ <select
+ required={getFieldRequired("field.subcategory", true)}
+ value={newTicket.subcategory}
+ onChange={e => {
+ setNewTicket({
+ ...newTicket,
+ subcategory: e.target.value,
+ service:""
+ });
+ }}
+ className={getInputClassName("field.subcategory","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white disabled:opacity-50 disabled:bg-muted")}
+ disabled={!newTicket.category || isFeatureDisabled("field.subcategory")}
+ >
+ <option value="">-- Select Subcategory --</option>
+ {filteredSubcategories.map(s => (
+ <option key={s.id} value={s.name}>{s.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
+ {/* Service */}
+ {isFeatureVisible("field.service") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
+ <span className="text-red-500 font-bold">*</span> Service
+ </label>
+ <select
+ required={getFieldRequired("field.service", true)}
+ value={newTicket.service}
+ onChange={e => {
+ setNewTicket({ ...newTicket, service: e.target.value });
+ }}
+ className={getInputClassName("field.service","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white disabled:opacity-50 disabled:bg-muted")}
+ disabled={!newTicket.subcategory || isFeatureDisabled("field.service")}
+ >
+ <option value="">-- Select Service --</option>
+ {filteredServiceProviders.map(sp => (
+ <option key={sp.id} value={sp.name}>{sp.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
+ {/* Service Offering */}
+ {isFeatureVisible("field.serviceOffering") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Service Offering</label>
+ <input
+ value={newTicket.serviceOffering}
+ onChange={e => setNewTicket({ ...newTicket, serviceOffering: e.target.value })}
+ className={getInputClassName("field.serviceOffering","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.serviceOffering")}
+ disabled={isFeatureDisabled("field.serviceOffering")}
+ readOnly={isFeatureReadOnly("field.serviceOffering")}
+ />
+ </div>
+ )}
+
+ {/* Configuration Item */}
+ {isFeatureVisible("field.configurationItem") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Configuration item</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ value={newTicket.configurationItem}
+ onChange={e => setNewTicket({ ...newTicket, configurationItem: e.target.value })}
+ className={getInputClassName("field.configurationItem","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.configurationItem")}
+ disabled={isFeatureDisabled("field.configurationItem")}
+ readOnly={isFeatureReadOnly("field.configurationItem")}
+ />
+ {isFeatureVisible("button.configurationItemLookup") && (
+ <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.configurationItemLookup")}><Search className="w-3 h-3" /></Button>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Computer Name */}
+ {isFeatureVisible("field.computerName") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Computer Name</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ value={newTicket.computerName}
+ onChange={e => setNewTicket({ ...newTicket, computerName: e.target.value })}
+ className={getInputClassName("field.computerName","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.computerName")}
+ disabled={isFeatureDisabled("field.computerName")}
+ readOnly={isFeatureReadOnly("field.computerName")}
+ />
+ {isFeatureVisible("button.computerNameLookup") && (
+ <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.computerNameLookup")}><Search className="w-3 h-3" /></Button>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Impact */}
+ {isFeatureVisible("field.impact") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Impact</label>
+ <select
+ value={newTicket.impact}
+ onChange={e => setNewTicket({ ...newTicket, impact: e.target.value })}
+ className={getInputClassName("field.impact","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8 transition-colors")}
+ required={getFieldRequired("field.impact")}
+ disabled={isFeatureDisabled("field.impact")}
+ >
+ <option>1 - High</option>
+ <option>2 - Medium</option>
+ <option>3 - Low</option>
+ </select>
+ </div>
+ )}
+
+ {/* Urgency */}
+ {isFeatureVisible("field.urgency") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Urgency</label>
+ <select
+ value={newTicket.urgency}
+ onChange={e => setNewTicket({ ...newTicket, urgency: e.target.value })}
+ className={getInputClassName("field.urgency","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8 transition-colors")}
+ required={getFieldRequired("field.urgency")}
+ disabled={isFeatureDisabled("field.urgency")}
+ >
+ <option>1 - High</option>
+ <option>2 - Medium</option>
+ <option>3 - Low</option>
+ </select>
+ </div>
+ )}
+
+ {/* Priority */}
+ {isFeatureVisible("field.priority") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Priority</label>
+ <input
+ disabled
+ className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-bold text-blue-600 h-8"
+ value={calculatePriority(newTicket.impact, newTicket.urgency)}
+ />
+ </div>
+ )}
+
+ {/* Knowledge Article Used */}
+ {isFeatureVisible("field.knowledgeArticleUsed") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Knowledge Article Used?</label>
+ <input
+ type="checkbox"
+ checked={newTicket.knowledgeArticleUsed}
+ onChange={e => setNewTicket({ ...newTicket, knowledgeArticleUsed: e.target.checked })}
+ className="w-4 h-4 accent-sn-green"
+ disabled={isFeatureDisabled("field.knowledgeArticleUsed")}
+ />
+ </div>
+ )}
+ </div>
+ )}
+
+ {/* Right Column */}
+ {isFeatureVisible("section.rightColumn") && (
+ <div className="space-y-4">
+ {/* Opened */}
+ {isFeatureVisible("field.opened") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened</label>
+ <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
+ value={new Date().toLocaleString()}
+ />
+ </div>
+ )}
+
+ {/* Opened by */}
+ {isFeatureVisible("field.openedBy") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened by</label>
+ <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
+ value={profile?.name || user?.email ||""}
+ />
+ </div>
+ )}
+
+ {/* State */}
+ {isFeatureVisible("field.state") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">State</label>
+ <select
+ disabled
+ className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs outline-none h-8"
+ >
+ <option>New</option>
+ </select>
+ </div>
+ )}
+
+ {/* Assignment group */}
+ {isFeatureVisible("field.assignmentGroup") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assignment group</label>
+ <div className="col-span-2 flex gap-1">
+ <select
+ value={newTicket.assignmentGroup}
+ onChange={e => {
+ const group = visibleGroups.find(g => g.name === e.target.value);
+ setNewTicket({ ...newTicket, assignmentGroup: e.target.value, selectedGroupId: group?.id ||"", assignedTo:"" });
+ }}
+ className={getInputClassName("field.assignmentGroup","flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.assignmentGroup")}
+ disabled={isFeatureDisabled("field.assignmentGroup")}
+ >
+ <option value="">-- Auto Assign --</option>
+ {displayGroups.map((item) => (
+ <option key={item.id} value={item.name}>
+ {item.name}
+ </option>
+ ))}
+ </select>
+ {isFeatureVisible("button.assignmentGroupLookup") && (
+ <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.assignmentGroupLookup")}><Search className="w-3 h-3" /></Button>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Assigned to */}
+ {isFeatureVisible("field.assignedTo") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assigned to</label>
+ <div className="col-span-2 flex gap-1">
+ <select
+ value={newTicket.assignedTo}
+ onChange={e => setNewTicket({ ...newTicket, assignedTo: e.target.value })}
+ className={getInputClassName("field.assignedTo","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.assignedTo")}
+ disabled={isFeatureDisabled("field.assignedTo")}
+ >
+ <option value="">-- Select Member --</option>
+ {visibleMembers.map(m => (
+ <option key={m.id} value={m.id}>{m.name || m.userName}</option>
+ ))}
+ </select>
+ {isFeatureVisible("button.assignedToLookup") && (
+ <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" disabled={isFeatureDisabled("button.assignedToLookup")}><Search className="w-3 h-3" /></Button>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Original Assignment Group */}
+ {isFeatureVisible("field.originalAssignmentGroup") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Original Assignment Group</label>
+ <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
+ value={newTicket.assignmentGroup ||""}
+ />
+ </div>
+ )}
+
+ {/* Acknowledged */}
+ {isFeatureVisible("field.acknowledged") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Acknowledged</label>
+ <input
+ type="checkbox"
+ checked={newTicket.acknowledged}
+ onChange={e => setNewTicket({ ...newTicket, acknowledged: e.target.checked })}
+ className="w-4 h-4 accent-sn-green"
+ disabled={isFeatureDisabled("field.acknowledged")}
+ />
+ </div>
+ )}
+
+ {/* Channel */}
+ {isFeatureVisible("field.channel") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Channel</label>
+ <select
+ value={newTicket.channel}
+ onChange={e => setNewTicket({ ...newTicket, channel: e.target.value })}
+ className={getInputClassName("field.channel","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.channel")}
+ disabled={isFeatureDisabled("field.channel")}
+ >
+ <option>Self-service</option>
+ <option>Email</option>
+ <option>Phone</option>
+ <option>Chat</option>
+ <option>Portal</option>
+ </select>
+ </div>
+ )}
+
+ {/* Password Reset? */}
+ {isFeatureVisible("field.passwordReset") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Password Reset?</label>
+ <select
+ value={newTicket.passwordReset}
+ onChange={e => setNewTicket({ ...newTicket, passwordReset: e.target.value })}
+ className={getInputClassName("field.passwordReset","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.passwordReset")}
+ disabled={isFeatureDisabled("field.passwordReset")}
+ >
+ <option>No</option>
+ <option>Yes</option>
+ </select>
+ </div>
+ )}
+
+ {/* Rackspace Ticket No */}
+ {isFeatureVisible("field.rackspaceTicketNo") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Rackspace Ticket No</label>
+ <input
+ value={newTicket.rackspaceTicketNo}
+ onChange={e => setNewTicket({ ...newTicket, rackspaceTicketNo: e.target.value })}
+ className={getInputClassName("field.rackspaceTicketNo","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.rackspaceTicketNo")}
+ disabled={isFeatureDisabled("field.rackspaceTicketNo")}
+ readOnly={isFeatureReadOnly("field.rackspaceTicketNo")}
+ />
+ </div>
+ )}
+
+ {/* Additional Information */}
+ {isFeatureVisible("field.additionalInformation") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Additional Information</label>
+ <input
+ value={newTicket.additionalInformation}
+ onChange={e => setNewTicket({ ...newTicket, additionalInformation: e.target.value })}
+ className={getInputClassName("field.additionalInformation","col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ required={getFieldRequired("field.additionalInformation")}
+ disabled={isFeatureDisabled("field.additionalInformation")}
+ readOnly={isFeatureReadOnly("field.additionalInformation")}
+ />
+ </div>
+ )}
+
+ {/* SLA due */}
+ {isFeatureVisible("field.slaDue") && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">SLA due</label>
+ <input disabled className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
+ value={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleString()}
+ />
+ </div>
+ )}
+ </div>
+ )}
+ </div>
+
+ {/* Full Width Fields */}
+ {isFeatureVisible("section.fullWidth") && (
+ <div className="mt-8 space-y-4">
+ <div className="grid grid-cols-6 items-center gap-4">
+ {isFeatureVisible("field.title") && (
+ <>
+ <label className="text-[11px] text-right font-medium uppercase leading-tight flex items-center justify-end gap-1">
+ <span className="text-red-500">*</span> Short description
+ </label>
+ <div className="col-span-5 flex gap-2">
+ <input
+ required={getFieldRequired("field.title", true)}
+ value={newTicket.title}
+ onChange={e => setNewTicket({ ...newTicket, title: e.target.value })}
+ className={getInputClassName("field.title","flex-grow p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green h-8")}
+ disabled={isFeatureDisabled("field.title")}
+ readOnly={isFeatureReadOnly("field.title")}
+ />
+ {isFeatureVisible("button.aiAutofill") && (
+ <Button
+ type="button"
+ onClick={handleAIAssist}
+ disabled={isAiLoading || isFeatureDisabled("button.aiAutofill")}
+ className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-[11px]"
+ >
+ {isAiLoading ?"Analyzing..." :"Autofill with AI"}
+ </Button>
+ )}
+ {isFeatureVisible("button.dictation") && (
+ <button
+ type="button"
+ onClick={() => speechControllerRef.current?.toggle()}
+ disabled={!speechSupported || isFeatureDisabled("button.dictation")}
+ className={cn(
+"p-1.5 hover:bg-muted rounded transition-colors ml-1 border border-border h-8 w-8 flex items-center justify-center",
+ speechListening &&"bg-sn-green/15 text-sn-green border-sn-green"
+ )}
+ title={speechListening ?"Stop Dictation" :"Dictation"}
+ >
+ <Mic className="w-4 h-4" />
+ </button>
+ )}
+ </div>
+ </>
+ )}
+ </div>
+ {isFeatureVisible("field.description") && (
+ <div className="grid grid-cols-6 items-start gap-4">
+ <label className="text-[11px] text-right font-medium uppercase leading-tight mt-1">Description</label>
+ <div className="col-span-5 space-y-1.5">
+ <textarea
+ rows={4}
+ value={newTicket.description}
+ onChange={e => setNewTicket({ ...newTicket, description: e.target.value })}
+ className={cn(
+ getInputClassName("field.description","w-full p-1.5 border rounded text-xs focus:ring-1 focus:ring-sn-green resize-none h-32 transition-all"),
+ suggestedSolution ? 'border-purple-400 ring-1 ring-purple-300 bg-purple-50' : 'border-border'
+ )}
+ placeholder="Describe the issue in detail... or use Autofill with AI above"
+ required={getFieldRequired("field.description")}
+ disabled={isFeatureDisabled("field.description")}
+ readOnly={isFeatureReadOnly("field.description")}
+ />
+ {speechListening && (
+ <div className="text-[10px] text-sn-green font-medium">
+ Listening{speechLiveText ? `: ${speechLiveText}` :"..."}
+ </div>
+ )}
+ </div>
+ </div>
+ )}
+ </div>
+ )}
+
+ {/* Suggested Solution Box */}
+ {suggestedSolution && isFeatureVisible("section.suggestedSolution") && (
+ <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+ <h4 className="text-purple-800 font-semibold mb-2 flex items-center gap-2">
+ <span>✨</span> AI filled your description
+ <span className="text-[10px] font-normal text-purple-500 ml-auto">You can edit it above</span>
+ </h4>
+ <p className="text-xs text-purple-700 italic line-clamp-3">{suggestedSolution}</p>
+ {isFeatureVisible("button.dismissSuggestedSolution") && (
+ <button type="button" onClick={() => setSuggestedSolution(null)}
+ disabled={isFeatureDisabled("button.dismissSuggestedSolution")}
+ className="mt-2 text-[10px] text-purple-400 hover:text-purple-600 underline disabled:opacity-50">
+ Dismiss
+ </button>
+ )}
+ </div>
+ )}
+
+ {/* Modal Footer */}
+ {isFeatureVisible("section.footer") && (
+ <div className="flex justify-end gap-3 pt-6 border-t border-border mt-8">
+ {isFeatureVisible("button.cancel") && (
+ <Button
+ type="button"
+ variant="outline"
+ onClick={closeModal}
+ disabled={isFeatureDisabled("button.cancel")}
+ className="px-6 h-8 text-[11px] font-bold uppercase tracking-wider"
+ >
+ Cancel
+ </Button>
+ )}
+ {isFeatureVisible("button.submit") && (
+ <Button
+ type="submit"
+ disabled={isSubmitting || isFeatureDisabled("button.submit")}
+ className="bg-sn-green text-sn-dark hover:bg-sn-green/90 px-8 h-8 text-[11px] font-bold uppercase tracking-wider shadow-sm disabled:opacity-50"
+ >
+ {isSubmitting ?"Submitting..." :"Submit"}
+ </Button>
+ )}
+ </div>
+ )}
+ </form>
+ </div>
+ </div>
+ )}
+ {contextMenu && (
+ <ContextMenu
+ x={contextMenu.x}
+ y={contextMenu.y}
+ onClose={() => setContextMenu(null)}
+ items={[
+ {
+ label:"Open Incident",
+ icon: <Edit size={14} />,
+ onClick: () => navigate(`/tickets/${contextMenu.ticketId}`)
+ },
+ {
+ label:"Open in New Tab",
+ icon: <ExternalLink size={14} />,
+ onClick: () => window.open(`/tickets/${contextMenu.ticketId}`,"_blank")
+ },
+ {
+ label:"Copy Incident Key",
+ icon: <span className="text-[10px]">ID</span>,
+ onClick: () => {
+ navigator.clipboard.writeText(contextMenu.ticketNumber);
+ }
+ },
+ {
+ label:"Delete Incident",
+ icon: <Trash2 size={14} className="text-red-500" />,
+ disabled: profile?.role !=="admin" && profile?.role !=="super_admin",
+ onClick: async () => {
+ if (confirm(`Are you sure you want to delete ticket ${contextMenu.ticketNumber}?`)) {
+ await deleteDoc(doc(db,"tickets", contextMenu.ticketId));
+ }
+ }
+ }
+ ]}
+ />
+ )}
+ </div>
+ );
 }

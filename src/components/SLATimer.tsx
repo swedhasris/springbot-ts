@@ -1,17 +1,17 @@
-import React, { useEffect, useState, useRef } from "react";
-import { cn } from "@/lib/utils";
-import { motion } from "motion/react";
-import { Clock, AlertCircle } from "lucide-react";
+import React, { useEffect, useState, useRef } from"react";
+import { cn } from"@/lib/utils";
+import { motion } from"motion/react";
+import { Clock, AlertCircle } from"lucide-react";
 
 interface SLATimerProps {
-  label: string;
-  deadline: string;
-  startTime?: string; // Total SLA duration reference
-  metAt?: string;
-  isPaused?: boolean;
-  onHoldStart?: string;
-  totalPausedTime?: number;
-  waitUntil?: string | null;
+ label: string;
+ deadline: string;
+ startTime?: string; // Total SLA duration reference
+ metAt?: string;
+ isPaused?: boolean;
+ onHoldStart?: string;
+ totalPausedTime?: number;
+ waitUntil?: string | null;
 }
 
 /**
@@ -19,276 +19,276 @@ interface SLATimerProps {
  * into milliseconds. Returns NaN if unparseable.
  */
 function toMs(val: any): number {
-  if (!val) return NaN;
-  // Firestore Timestamp object: { seconds: number, nanoseconds: number }
-  if (typeof val === 'object' && val.seconds !== undefined) {
-    return val.seconds * 1000 + (val.nanoseconds || 0) / 1_000_000;
-  }
-  // Firestore Timestamp with toDate()
-  if (typeof val === 'object' && typeof val.toDate === 'function') {
-    return val.toDate().getTime();
-  }
-  // Already a number (ms)
-  if (typeof val === 'number') return val;
-  // ISO string or any string Date can parse
-  const ms = new Date(val).getTime();
-  return ms;
+ if (!val) return NaN;
+ // Firestore Timestamp object: { seconds: number, nanoseconds: number }
+ if (typeof val === 'object' && val.seconds !== undefined) {
+ return val.seconds * 1000 + (val.nanoseconds || 0) / 1_000_000;
+ }
+ // Firestore Timestamp with toDate()
+ if (typeof val === 'object' && typeof val.toDate === 'function') {
+ return val.toDate().getTime();
+ }
+ // Already a number (ms)
+ if (typeof val === 'number') return val;
+ // ISO string or any string Date can parse
+ const ms = new Date(val).getTime();
+ return ms;
 }
 
 export function SLATimer({
-  label,
-  deadline,
-  startTime,
-  metAt,
-  isPaused = false,
-  onHoldStart,
-  totalPausedTime = 0,
-  waitUntil,
+ label,
+ deadline,
+ startTime,
+ metAt,
+ isPaused = false,
+ onHoldStart,
+ totalPausedTime = 0,
+ waitUntil,
 }: SLATimerProps) {
-  const [displayTime, setDisplayTime] = useState("");
-  const [breachDuration, setBreachDuration] = useState("");
-  const [status, setStatus] = useState<"waiting" | "met" | "breached" | "active" | "paused">("active");
-  const [percentage, setPercentage] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+ const [displayTime, setDisplayTime] = useState("");
+ const [breachDuration, setBreachDuration] = useState("");
+ const [status, setStatus] = useState<"waiting" |"met" |"breached" |"active" |"paused">("active");
+ const [percentage, setPercentage] = useState(0);
+ const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    // Clear any existing interval
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+ useEffect(() => {
+ // Clear any existing interval
+ if (timerRef.current) {
+ clearInterval(timerRef.current);
+ timerRef.current = null;
+ }
 
-    // ── CASE 1: SLA already met — freeze display as COMPLETED ──────────────────
-    if (metAt) {
-      const metMs = toMs(metAt);
-      if (!isNaN(metMs)) {
-        setStatus("met");
-        setDisplayTime("MET ✓");
-        setBreachDuration("");
-        setPercentage(100);
-        return;
-      }
-    }
+ // ── CASE 1: SLA already met — freeze display as COMPLETED ──────────────────
+ if (metAt) {
+ const metMs = toMs(metAt);
+ if (!isNaN(metMs)) {
+ setStatus("met");
+ setDisplayTime("MET ✓");
+ setBreachDuration("");
+ setPercentage(100);
+ return;
+ }
+ }
 
-    // ── CASE 2: Resolution SLA — waiting for first response ────────────────────
-    // waitUntil === null  → first response not yet given, show PENDING
-    // waitUntil === undefined → no wait required (Response SLA), start immediately
-    if (waitUntil !== undefined && (waitUntil === null || waitUntil === "")) {
-      setStatus("waiting");
-      setDisplayTime("-- : -- : --");
-      setBreachDuration("");
-      setPercentage(0);
-      return;
-    }
+ // ── CASE 2: Resolution SLA — waiting for first response ────────────────────
+ // waitUntil === null → first response not yet given, show PENDING
+ // waitUntil === undefined → no wait required (Response SLA), start immediately
+ if (waitUntil !== undefined && (waitUntil === null || waitUntil ==="")) {
+ setStatus("waiting");
+ setDisplayTime("-- : -- : --");
+ setBreachDuration("");
+ setPercentage(0);
+ return;
+ }
 
-    const deadlineMs = toMs(deadline);
-    if (isNaN(deadlineMs)) {
-      setDisplayTime("--:--:--");
-      return;
-    }
+ const deadlineMs = toMs(deadline);
+ if (isNaN(deadlineMs)) {
+ setDisplayTime("--:--:--");
+ return;
+ }
 
-    const startMs = startTime ? toMs(startTime) : (deadlineMs - 24 * 3_600_000);
+ const startMs = startTime ? toMs(startTime) : (deadlineMs - 24 * 3_600_000);
 
-    // ── CASE 3: Ticket is ON HOLD — freeze timer at current remaining value ─────
-    if (isPaused) {
-      // Calculate remaining time at the moment the hold started
-      const holdStartMs = onHoldStart ? toMs(onHoldStart) : Date.now();
-      const effectiveHoldStart = !isNaN(holdStartMs) ? holdStartMs : Date.now();
-      const diff = deadlineMs - effectiveHoldStart + (totalPausedTime || 0);
+ // ── CASE 3: Ticket is ON HOLD — freeze timer at current remaining value ─────
+ if (isPaused) {
+ // Calculate remaining time at the moment the hold started
+ const holdStartMs = onHoldStart ? toMs(onHoldStart) : Date.now();
+ const effectiveHoldStart = !isNaN(holdStartMs) ? holdStartMs : Date.now();
+ const diff = deadlineMs - effectiveHoldStart + (totalPausedTime || 0);
 
-      if (diff <= 0) {
-        setStatus("breached");
-        setDisplayTime("00:00:00");
-        setPercentage(100);
-        const overdue = Math.abs(diff);
-        if (overdue >= 3_600_000) {
-          const h = Math.floor(overdue / 3_600_000);
-          const m = Math.floor((overdue % 3_600_000) / 60_000);
-          setBreachDuration(`${h}h ${m}m overdue`);
-        } else if (overdue >= 60_000) {
-          setBreachDuration(`${Math.floor(overdue / 60_000)}m overdue`);
-        } else {
-          setBreachDuration("just breached");
-        }
-      } else {
-        setStatus("paused");
-        setBreachDuration("");
-        const h = Math.floor(diff / 3_600_000);
-        const m = Math.floor((diff % 3_600_000) / 60_000);
-        const s = Math.floor((diff % 60_000) / 1_000);
-        setDisplayTime(
-          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-        );
-        const totalDuration = deadlineMs - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs);
-        const elapsed = effectiveHoldStart - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs) - (totalPausedTime || 0);
-        setPercentage(totalDuration > 0 ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0);
-      }
-      // No interval — timer is frozen while on hold
-      return;
-    }
+ if (diff <= 0) {
+ setStatus("breached");
+ setDisplayTime("00:00:00");
+ setPercentage(100);
+ const overdue = Math.abs(diff);
+ if (overdue >= 3_600_000) {
+ const h = Math.floor(overdue / 3_600_000);
+ const m = Math.floor((overdue % 3_600_000) / 60_000);
+ setBreachDuration(`${h}h ${m}m overdue`);
+ } else if (overdue >= 60_000) {
+ setBreachDuration(`${Math.floor(overdue / 60_000)}m overdue`);
+ } else {
+ setBreachDuration("just breached");
+ }
+ } else {
+ setStatus("paused");
+ setBreachDuration("");
+ const h = Math.floor(diff / 3_600_000);
+ const m = Math.floor((diff % 3_600_000) / 60_000);
+ const s = Math.floor((diff % 60_000) / 1_000);
+ setDisplayTime(
+ `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+ );
+ const totalDuration = deadlineMs - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs);
+ const elapsed = effectiveHoldStart - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs) - (totalPausedTime || 0);
+ setPercentage(totalDuration > 0 ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0);
+ }
+ // No interval — timer is frozen while on hold
+ return;
+ }
 
-    // ── CASE 4: Active timer — tick every second ────────────────────────────────
-    const tick = () => {
-      const now = Date.now();
-      const diff = deadlineMs - now + (totalPausedTime || 0);
-      const totalDuration = deadlineMs - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs);
-      const elapsed = now - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs) - (totalPausedTime || 0);
-      const calculatedPercentage = totalDuration > 0 ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0;
+ // ── CASE 4: Active timer — tick every second ────────────────────────────────
+ const tick = () => {
+ const now = Date.now();
+ const diff = deadlineMs - now + (totalPausedTime || 0);
+ const totalDuration = deadlineMs - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs);
+ const elapsed = now - (isNaN(startMs) ? deadlineMs - 24 * 3_600_000 : startMs) - (totalPausedTime || 0);
+ const calculatedPercentage = totalDuration > 0 ? Math.min(Math.max((elapsed / totalDuration) * 100, 0), 100) : 0;
 
-      if (diff <= 0) {
-        setStatus("breached");
-        setDisplayTime("00:00:00");
-        setPercentage(100);
+ if (diff <= 0) {
+ setStatus("breached");
+ setDisplayTime("00:00:00");
+ setPercentage(100);
 
-        const overdue = Math.abs(diff);
-        if (overdue >= 3_600_000) {
-          const h = Math.floor(overdue / 3_600_000);
-          const m = Math.floor((overdue % 3_600_000) / 60_000);
-          setBreachDuration(`${h}h ${m}m overdue`);
-        } else if (overdue >= 60_000) {
-          setBreachDuration(`${Math.floor(overdue / 60_000)}m overdue`);
-        } else {
-          setBreachDuration("just breached");
-        }
+ const overdue = Math.abs(diff);
+ if (overdue >= 3_600_000) {
+ const h = Math.floor(overdue / 3_600_000);
+ const m = Math.floor((overdue % 3_600_000) / 60_000);
+ setBreachDuration(`${h}h ${m}m overdue`);
+ } else if (overdue >= 60_000) {
+ setBreachDuration(`${Math.floor(overdue / 60_000)}m overdue`);
+ } else {
+ setBreachDuration("just breached");
+ }
 
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-      } else {
-        setStatus("active");
-        setBreachDuration("");
-        const h = Math.floor(diff / 3_600_000);
-        const m = Math.floor((diff % 3_600_000) / 60_000);
-        const s = Math.floor((diff % 60_000) / 1_000);
-        setDisplayTime(
-          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-        );
-        setPercentage(calculatedPercentage);
-      }
-    };
+ if (timerRef.current) {
+ clearInterval(timerRef.current);
+ timerRef.current = null;
+ }
+ } else {
+ setStatus("active");
+ setBreachDuration("");
+ const h = Math.floor(diff / 3_600_000);
+ const m = Math.floor((diff % 3_600_000) / 60_000);
+ const s = Math.floor((diff % 60_000) / 1_000);
+ setDisplayTime(
+ `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+ );
+ setPercentage(calculatedPercentage);
+ }
+ };
 
-    tick();
-    timerRef.current = setInterval(tick, 1000);
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [deadline, startTime, metAt, isPaused, onHoldStart, totalPausedTime, waitUntil]);
+ tick();
+ timerRef.current = setInterval(tick, 1000);
+ return () => {
+ if (timerRef.current) {
+ clearInterval(timerRef.current);
+ timerRef.current = null;
+ }
+ };
+ }, [deadline, startTime, metAt, isPaused, onHoldStart, totalPausedTime, waitUntil]);
 
-  // ── Display helpers ──────────────────────────────────────────────────────────
-  const getEscalationStatus = () => {
-    if (status === "met") return "COMPLETED";
-    if (status === "breached") return "SLA BREACHED";
-    if (status === "paused") return "PAUSED";
-    if (status === "waiting") return "PENDING";
-    if (percentage >= 90) return "CRITICAL NEAR BREACH";
-    if (percentage >= 81) return "NEAR BREACH";
-    if (percentage >= 51) return "WARNING";
-    return "HEALTHY";
-  };
+ // ── Display helpers ──────────────────────────────────────────────────────────
+ const getEscalationStatus = () => {
+ if (status ==="met") return"COMPLETED";
+ if (status ==="breached") return"SLA BREACHED";
+ if (status ==="paused") return"PAUSED";
+ if (status ==="waiting") return"PENDING";
+ if (percentage >= 90) return"CRITICAL NEAR BREACH";
+ if (percentage >= 81) return"NEAR BREACH";
+ if (percentage >= 51) return"WARNING";
+ return"HEALTHY";
+ };
 
-  const getEscalationColor = () => {
-    if (status === "met") return "bg-emerald-500";
-    if (status === "breached") return "bg-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)]";
-    if (status === "paused") return "bg-amber-400";
-    if (status === "waiting") return "bg-blue-400 dark:bg-blue-500";
-    if (percentage >= 90) return "bg-orange-600";
-    if (percentage >= 81) return "bg-orange-500";
-    if (percentage >= 51) return "bg-yellow-500";
-    return "bg-emerald-500";
-  };
+ const getEscalationColor = () => {
+ if (status ==="met") return"bg-emerald-500";
+ if (status ==="breached") return"bg-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)]";
+ if (status ==="paused") return"bg-amber-400";
+ if (status ==="waiting") return"bg-blue-400 dark:bg-blue-500";
+ if (percentage >= 90) return"bg-orange-600";
+ if (percentage >= 81) return"bg-orange-500";
+ if (percentage >= 51) return"bg-yellow-500";
+ return"bg-emerald-500";
+ };
 
-  const getEscalationTextColor = () => {
-    if (status === "met") return "text-emerald-600";
-    if (status === "breached") return "text-red-600 animate-pulse font-black";
-    if (status === "paused") return "text-amber-600";
-    if (status === "waiting") return "text-gray-400";
-    if (percentage >= 90) return "text-orange-700 font-bold";
-    if (percentage >= 81) return "text-orange-600";
-    if (percentage >= 51) return "text-yellow-600";
-    return "text-blue-600";
-  };
+ const getEscalationTextColor = () => {
+ if (status ==="met") return"text-emerald-600";
+ if (status ==="breached") return"text-red-600 animate-pulse font-semibold";
+ if (status ==="paused") return"text-amber-600";
+ if (status ==="waiting") return"text-gray-400";
+ if (percentage >= 90) return"text-orange-700 font-bold";
+ if (percentage >= 81) return"text-orange-600";
+ if (percentage >= 51) return"text-yellow-600";
+ return"text-blue-600";
+ };
 
-  return (
-    <div className="flex flex-col gap-1.5 p-2 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-all group min-w-[160px]">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <div className={cn("w-1.5 h-1.5 rounded-full", getEscalationColor())} />
-          <span className="text-[8px] uppercase text-muted-foreground font-black tracking-widest">{label}</span>
-        </div>
-        <span className={cn(
-          "text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter transition-all",
-          status === "met" ? "bg-emerald-50 text-emerald-700" :
-            status === "breached" ? "bg-red-100 text-red-700 animate-bounce" :
-              status === "paused" ? "bg-amber-50 text-amber-700 border border-amber-200/50" :
-                status === "waiting" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-100/30" :
-                  percentage >= 81 ? "bg-orange-100 text-orange-700" :
-                    percentage >= 51 ? "bg-yellow-100 text-yellow-700" : "bg-blue-50 text-blue-700"
-        )}>
-          {getEscalationStatus()}
-        </span>
-      </div>
-      
-      <div className="flex items-baseline justify-between gap-1.5">
-        <span className={cn(
-          "text-base font-mono font-black leading-none tracking-tight",
-          getEscalationTextColor()
-        )}>
-          {displayTime}
-        </span>
-        <div className="flex flex-col items-end leading-none">
-          <span className="text-[9px] font-black text-muted-foreground">{Math.round(percentage)}%</span>
-          {status === "breached" && breachDuration && (
-            <span className="text-[7px] font-bold text-red-500 italic uppercase">{breachDuration}</span>
-          )}
-        </div>
-      </div>
+ return (
+ <div className="flex flex-col gap-1.5 p-2 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-all group min-w-[160px]">
+ <div className="flex items-center justify-between">
+ <div className="flex items-center gap-1">
+ <div className={cn("w-1.5 h-1.5 rounded-full", getEscalationColor())} />
+ <span className="text-[8px] uppercase text-muted-foreground font-semibold tracking-widest">{label}</span>
+ </div>
+ <span className={cn(
+"text-[8px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-tighter transition-all",
+ status ==="met" ?"bg-emerald-50 text-emerald-700" :
+ status ==="breached" ?"bg-red-100 text-red-700 animate-bounce" :
+ status ==="paused" ?"bg-amber-50 text-amber-700 border border-amber-200/50" :
+ status ==="waiting" ?"bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-100/30" :
+ percentage >= 81 ?"bg-orange-100 text-orange-700" :
+ percentage >= 51 ?"bg-yellow-100 text-yellow-700" :"bg-blue-50 text-blue-700"
+ )}>
+ {getEscalationStatus()}
+ </span>
+ </div>
+ 
+ <div className="flex items-baseline justify-between gap-1.5">
+ <span className={cn(
+"text-base font-semibold leading-none tracking-tight",
+ getEscalationTextColor()
+ )}>
+ {displayTime}
+ </span>
+ <div className="flex flex-col items-end leading-none">
+ <span className="text-[9px] font-semibold text-muted-foreground">{Math.round(percentage)}%</span>
+ {status ==="breached" && breachDuration && (
+ <span className="text-[7px] font-bold text-red-500 italic uppercase">{breachDuration}</span>
+ )}
+ </div>
+ </div>
 
-      {/* Progress bar with Dynamic Colors */}
-      <div className="relative w-full h-1.5 bg-muted rounded-full overflow-hidden shadow-inner">
-        <motion.div
-          layout
-          className={cn("h-full transition-all duration-1000", getEscalationColor())}
-          initial={{ width: 0 }}
-          animate={{ width: `${percentage}%` }}
-        />
-      </div>
+ {/* Progress bar with Dynamic Colors */}
+ <div className="relative w-full h-1.5 bg-muted rounded-full overflow-hidden shadow-inner">
+ <motion.div
+ layout
+ className={cn("h-full transition-all duration-1000", getEscalationColor())}
+ initial={{ width: 0 }}
+ animate={{ width: `${percentage}%` }}
+ />
+ </div>
 
-      {/* Status footer */}
-      <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/30">
-        {status === "waiting" ? (
-          <>
-            <span className="text-[7px] text-muted-foreground/80 font-bold uppercase tracking-tight flex items-center gap-1">
-              Pending Handover
-            </span>
-            <Clock className="w-2.5 h-2.5 text-muted-foreground/40" />
-          </>
-        ) : status === "paused" ? (
-          <>
-            <span className="text-[7px] text-amber-600/80 font-bold uppercase tracking-tight flex items-center gap-1">
-              Timer Paused
-            </span>
-            <Clock className="w-2.5 h-2.5 text-amber-400/60" />
-          </>
-        ) : status === "met" ? (
-          <>
-            <span className="text-[7px] text-emerald-600/80 font-bold uppercase tracking-tight">
-              SLA Met
-            </span>
-            <AlertCircle className="w-2.5 h-2.5 text-emerald-400/60" />
-          </>
-        ) : (
-          <>
-            <span className="text-[7px] text-muted-foreground/80 font-bold uppercase tracking-tight">
-              {percentage >= 100 ? "Escalated: Manager" : percentage >= 90 ? "Escalated: Lead" : percentage >= 80 ? "Escalated: Engineer" : "Status: Optimal"}
-            </span>
-            <AlertCircle className={cn("w-2.5 h-2.5", percentage >= 80 ? "text-orange-500" : "text-muted-foreground/20")} />
-          </>
-        )}
-      </div>
-    </div>
-  );
+ {/* Status footer */}
+ <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/30">
+ {status ==="waiting" ? (
+ <>
+ <span className="text-[7px] text-muted-foreground/80 font-bold uppercase tracking-tight flex items-center gap-1">
+ Pending Handover
+ </span>
+ <Clock className="w-2.5 h-2.5 text-muted-foreground/40" />
+ </>
+ ) : status ==="paused" ? (
+ <>
+ <span className="text-[7px] text-amber-600/80 font-bold uppercase tracking-tight flex items-center gap-1">
+ Timer Paused
+ </span>
+ <Clock className="w-2.5 h-2.5 text-amber-400/60" />
+ </>
+ ) : status ==="met" ? (
+ <>
+ <span className="text-[7px] text-emerald-600/80 font-bold uppercase tracking-tight">
+ SLA Met
+ </span>
+ <AlertCircle className="w-2.5 h-2.5 text-emerald-400/60" />
+ </>
+ ) : (
+ <>
+ <span className="text-[7px] text-muted-foreground/80 font-bold uppercase tracking-tight">
+ {percentage >= 100 ?"Escalated: Manager" : percentage >= 90 ?"Escalated: Lead" : percentage >= 80 ?"Escalated: Engineer" :"Status: Optimal"}
+ </span>
+ <AlertCircle className={cn("w-2.5 h-2.5", percentage >= 80 ?"text-orange-500" :"text-muted-foreground/20")} />
+ </>
+ )}
+ </div>
+ </div>
+ );
 }

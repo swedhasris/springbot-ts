@@ -5,15 +5,15 @@
  */
 
 export function initializeApp(_config: any, _name?: string): any {
-  return {};
+ return {};
 }
 
 export function getApp(_name?: string): any {
-  return {};
+ return {};
 }
 
 export function getApps(): any[] {
-  return [];
+ return [];
 }
 
 export type FirebaseApp = any;

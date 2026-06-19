@@ -7,4 +7,4 @@
  * The vite.config.ts alias `firebase/firestore` → this file remains in place
  * so all existing imports throughout the codebase continue to work.
  */
-export * from "./api";
+export * from"./api";

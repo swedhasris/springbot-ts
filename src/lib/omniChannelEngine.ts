@@ -4,439 +4,439 @@ import { simpleParser } from 'mailparser';
 import fs from 'fs';
 import path from 'path';
 import { query, execute, formatDate } from './db';
-import { NotificationEngine } from "./notificationEngine";
+import { NotificationEngine } from"./notificationEngine";
 // Firebase removed — all data access uses MySQL via query()/execute()
 
 /**
  * OmniChannelEngine handles multi-channel communication (Email, WhatsApp, etc.)
  */
 export class OmniChannelEngine {
-  /**
-   * Initializes the email transporter for a specific config
-   */
-  private static async createTransporter(config: any) {
-    return nodemailer.createTransport({
-      host: config.smtp_host || process.env.SMTP_HOST || 'mail.technosprint.net',
-      port: config.smtp_port || parseInt(process.env.SMTP_PORT || '465'),
-      secure: (config.smtp_port || parseInt(process.env.SMTP_PORT || '465')) === 465,
-      auth: {
-        user: config.smtp_user || process.env.SMTP_USER || 'info@technosprint.net',
-        pass: config.smtp_pass || process.env.SMTP_PASS || '',
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-  }
+ /**
+ * Initializes the email transporter for a specific config
+ */
+ private static async createTransporter(config: any) {
+ return nodemailer.createTransport({
+ host: config.smtp_host || process.env.SMTP_HOST || 'mail.technosprint.net',
+ port: config.smtp_port || parseInt(process.env.SMTP_PORT || '465'),
+ secure: (config.smtp_port || parseInt(process.env.SMTP_PORT || '465')) === 465,
+ auth: {
+ user: config.smtp_user || process.env.SMTP_USER || 'info@technosprint.net',
+ pass: config.smtp_pass || process.env.SMTP_PASS || '',
+ },
+ tls: {
+ rejectUnauthorized: false
+ }
+ });
+ }
 
-  /**
-   * Initializes the default/legacy email transporter using environment variables
-   */
-  private static getTransporter() {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'mail.technosprint.net',
-      port: parseInt(process.env.SMTP_PORT || '465'),
-      secure: (process.env.SMTP_PORT || '465') === '465',
-      auth: {
-        user: process.env.SMTP_USER || 'info@technosprint.net',
-        pass: process.env.SMTP_PASS || '',
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-  }
+ /**
+ * Initializes the default/legacy email transporter using environment variables
+ */
+ private static getTransporter() {
+ return nodemailer.createTransport({
+ host: process.env.SMTP_HOST || 'mail.technosprint.net',
+ port: parseInt(process.env.SMTP_PORT || '465'),
+ secure: (process.env.SMTP_PORT || '465') === '465',
+ auth: {
+ user: process.env.SMTP_USER || 'info@technosprint.net',
+ pass: process.env.SMTP_PASS || '',
+ },
+ tls: {
+ rejectUnauthorized: false
+ }
+ });
+ }
 
-  /**
-   * Polls incoming emails for ALL active company configurations.
-   */
-  static async pollIncomingEmails() {
-    console.log('[OmniChannel] Starting multi-tenant email polling...');
-    
-    try {
-      // 1. Fetch all active configs
-      let configs = await query("SELECT * FROM company_email_configs WHERE is_active = 1");
-      
-      if (configs.length === 0) {
-        console.log('[OmniChannel] No active database configs. Falling back to Support@technosprint.net from .env...');
-        if (process.env.IMAP_USER && process.env.IMAP_PASS) {
-          configs = [{
-            id: 'env_fallback',
-            company_name: 'Technosprint',
-            email_address: process.env.IMAP_USER,
-            imap_host: process.env.IMAP_HOST,
-            imap_port: parseInt(process.env.IMAP_PORT || '993'),
-            imap_user: process.env.IMAP_USER,
-            imap_pass: process.env.IMAP_PASS,
-            smtp_host: process.env.SMTP_HOST,
-            smtp_port: parseInt(process.env.SMTP_PORT || '465'),
-            smtp_user: process.env.SMTP_USER,
-            smtp_pass: process.env.SMTP_PASS
-          }];
-        } else {
-          return;
-        }
-      }
+ /**
+ * Polls incoming emails for ALL active company configurations.
+ */
+ static async pollIncomingEmails() {
+ console.log('[OmniChannel] Starting multi-tenant email polling...');
+ 
+ try {
+ // 1. Fetch all active configs
+ let configs = await query("SELECT * FROM company_email_configs WHERE is_active = 1");
+ 
+ if (configs.length === 0) {
+ console.log('[OmniChannel] No active database configs. Falling back to Support@technosprint.net from .env...');
+ if (process.env.IMAP_USER && process.env.IMAP_PASS) {
+ configs = [{
+ id: 'env_fallback',
+ company_name: 'Technosprint',
+ email_address: process.env.IMAP_USER,
+ imap_host: process.env.IMAP_HOST,
+ imap_port: parseInt(process.env.IMAP_PORT || '993'),
+ imap_user: process.env.IMAP_USER,
+ imap_pass: process.env.IMAP_PASS,
+ smtp_host: process.env.SMTP_HOST,
+ smtp_port: parseInt(process.env.SMTP_PORT || '465'),
+ smtp_user: process.env.SMTP_USER,
+ smtp_pass: process.env.SMTP_PASS
+ }];
+ } else {
+ return;
+ }
+ }
 
-      for (const config of configs) {
-        console.log(`[OmniChannel] Polling for ${config.company_name} (${config.email_address})...`);
-        
-        const imapConfig = {
-          imap: {
-            user: config.imap_user || process.env.IMAP_USER,
-            password: config.imap_pass || process.env.IMAP_PASS,
-            host: config.imap_host || process.env.IMAP_HOST || 'mail.technosprint.net',
-            port: config.imap_port || parseInt(process.env.IMAP_PORT || '993'),
-            tls: true,
-            tlsOptions: { rejectUnauthorized: false },
-            authTimeout: 10000,
-          }
-        };
+ for (const config of configs) {
+ console.log(`[OmniChannel] Polling for ${config.company_name} (${config.email_address})...`);
+ 
+ const imapConfig = {
+ imap: {
+ user: config.imap_user || process.env.IMAP_USER,
+ password: config.imap_pass || process.env.IMAP_PASS,
+ host: config.imap_host || process.env.IMAP_HOST || 'mail.technosprint.net',
+ port: config.imap_port || parseInt(process.env.IMAP_PORT || '993'),
+ tls: true,
+ tlsOptions: { rejectUnauthorized: false },
+ authTimeout: 10000,
+ }
+ };
 
-        try {
-          const connection = await imaps.connect(imapConfig);
-          
-          // Handle unhandled IMAP stream errors to prevent server crash
-          connection.on('error', (err: any) => {
-            console.warn(`[OmniChannel] IMAP stream error for ${config.company_name}:`, err.message);
-          });
+ try {
+ const connection = await imaps.connect(imapConfig);
+ 
+ // Handle unhandled IMAP stream errors to prevent server crash
+ connection.on('error', (err: any) => {
+ console.warn(`[OmniChannel] IMAP stream error for ${config.company_name}:`, err.message);
+ });
 
-          await connection.openBox('INBOX');
+ await connection.openBox('INBOX');
 
-          // Search only for unseen emails to prevent processing already-seen duplicate emails
-          const searchCriteria = ['UNSEEN'];
-          const fetchOptions = {
-            bodies: ['HEADER', 'TEXT', ''],
-            markSeen: true
-          };
+ // Search only for unseen emails to prevent processing already-seen duplicate emails
+ const searchCriteria = ['UNSEEN'];
+ const fetchOptions = {
+ bodies: ['HEADER', 'TEXT', ''],
+ markSeen: true
+ };
 
-          const messages = await connection.search(searchCriteria, fetchOptions);
-          
-          if (messages.length > 0) {
-            console.log(`[OmniChannel] Found ${messages.length} potential emails for ${config.company_name}. Checking for duplicates...`);
-          }
+ const messages = await connection.search(searchCriteria, fetchOptions);
+ 
+ if (messages.length > 0) {
+ console.log(`[OmniChannel] Found ${messages.length} potential emails for ${config.company_name}. Checking for duplicates...`);
+ }
 
-          for (const item of messages) {
-            const all = item.parts.find(part => part.which === '');
-            if (all) {
-              const parsed = await simpleParser(all.body);
-              
-              // Prevent duplicate processing of the same messageId
-              const existing = await query("SELECT id FROM email_logs WHERE message_id = ?", [parsed.messageId]);
-              if (existing.length > 0) continue;
+ for (const item of messages) {
+ const all = item.parts.find(part => part.which === '');
+ if (all) {
+ const parsed = await simpleParser(all.body);
+ 
+ // Prevent duplicate processing of the same messageId
+ const existing = await query("SELECT id FROM email_logs WHERE message_id = ?", [parsed.messageId]);
+ if (existing.length > 0) continue;
 
-              // Find company ID for log via MySQL
-              let companyId: string | null = null;
-              try {
-                const companies = await query("SELECT id FROM companies WHERE email_integration_id = ? LIMIT 1", [String(config.id)]);
-                if (companies.length > 0) companyId = String(companies[0].id);
-              } catch (err) {
-                console.error("[OmniChannel] Error finding company for integration ID:", config.id, err);
-              }
+ // Find company ID for log via MySQL
+ let companyId: string | null = null;
+ try {
+ const companies = await query("SELECT id FROM companies WHERE email_integration_id = ? LIMIT 1", [String(config.id)]);
+ if (companies.length > 0) companyId = String(companies[0].id);
+ } catch (err) {
+ console.error("[OmniChannel] Error finding company for integration ID:", config.id, err);
+ }
 
-              await this.processIncomingEmail(parsed, config);
-              
-              // Log Success
-              await execute(
-                "INSERT INTO email_logs (direction, recipient, subject, status, message_id, company_id, email_integration_id, mailbox_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                ['inbound', config.email_address, parsed.subject, 'success', parsed.messageId, companyId, config.id, config.email_address]
-              );
-            }
-          }
+ await this.processIncomingEmail(parsed, config);
+ 
+ // Log Success
+ await execute(
+"INSERT INTO email_logs (direction, recipient, subject, status, message_id, company_id, email_integration_id, mailbox_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+ ['inbound', config.email_address, parsed.subject, 'success', parsed.messageId, companyId, config.id, config.email_address]
+ );
+ }
+ }
 
-          connection.end();
-        } catch (err: any) {
-          console.error(`[OmniChannel] Error polling ${config.company_name}:`, err.message);
-          // Log Failure
-          await execute(
-            "INSERT INTO email_logs (direction, recipient, subject, status, error_message, email_integration_id, mailbox_used) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ['inbound', config.email_address, 'Polling Attempt', 'failed', err.message, config.id, config.email_address]
-          );
-        }
-      }
-    } catch (error: any) {
-      console.error('[OmniChannel] Multi-tenant poll error:', error.message);
-    }
-  }
+ connection.end();
+ } catch (err: any) {
+ console.error(`[OmniChannel] Error polling ${config.company_name}:`, err.message);
+ // Log Failure
+ await execute(
+"INSERT INTO email_logs (direction, recipient, subject, status, error_message, email_integration_id, mailbox_used) VALUES (?, ?, ?, ?, ?, ?, ?)",
+ ['inbound', config.email_address, 'Polling Attempt', 'failed', err.message, config.id, config.email_address]
+ );
+ }
+ }
+ } catch (error: any) {
+ console.error('[OmniChannel] Multi-tenant poll error:', error.message);
+ }
+ }
 
-  /**
-   * Process a single incoming email with company context
-   */
-  private static async processIncomingEmail(mail: any, config: any) {
-    const subject = mail.subject || '(No Subject)';
-    const from = mail.from?.text || mail.from?.value?.[0]?.address || 'unknown';
-    const body = mail.text || mail.html || '';
-    const messageId = mail.messageId;
+ /**
+ * Process a single incoming email with company context
+ */
+ private static async processIncomingEmail(mail: any, config: any) {
+ const subject = mail.subject || '(No Subject)';
+ const from = mail.from?.text || mail.from?.value?.[0]?.address || 'unknown';
+ const body = mail.text || mail.html || '';
+ const messageId = mail.messageId;
 
-    console.log(`[OmniChannel] Processing email from ${from}: ${subject} (Company: ${config.company_name})`);
+ console.log(`[OmniChannel] Processing email from ${from}: ${subject} (Company: ${config.company_name})`);
 
-    try {
-      // 0. Handle Attachments
-      const attachments: any[] = [];
-      if (mail.attachments && mail.attachments.length > 0) {
-        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+ try {
+ // 0. Handle Attachments
+ const attachments: any[] = [];
+ if (mail.attachments && mail.attachments.length > 0) {
+ const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-        for (const att of mail.attachments) {
-          const filename = `${Date.now()}-${att.filename || 'attachment'}`;
-          const filepath = path.join(uploadsDir, filename);
-          fs.writeFileSync(filepath, att.content);
-          attachments.push({
-            filename: att.filename || 'attachment',
-            stored_filename: filename,
-            content_type: att.contentType,
-            size: att.size,
-            url: `/uploads/${filename}`
-          });
-        }
-      }
+ for (const att of mail.attachments) {
+ const filename = `${Date.now()}-${att.filename || 'attachment'}`;
+ const filepath = path.join(uploadsDir, filename);
+ fs.writeFileSync(filepath, att.content);
+ attachments.push({
+ filename: att.filename || 'attachment',
+ stored_filename: filename,
+ content_type: att.contentType,
+ size: att.size,
+ url: `/uploads/${filename}`
+ });
+ }
+ }
 
-      // 1. Check if this is a reply to an existing ticket
-      const ticketMatch = subject.match(/INC(\d+)/i) || body.match(/INC(\d+)/i);
-      
-      if (ticketMatch) {
-        let ticketNumber = ticketMatch[0].toUpperCase();
+ // 1. Check if this is a reply to an existing ticket
+ const ticketMatch = subject.match(/INC(\d+)/i) || body.match(/INC(\d+)/i);
+ 
+ if (ticketMatch) {
+ let ticketNumber = ticketMatch[0].toUpperCase();
 
-        const tickets = await query("SELECT id, assigned_to, ticket_number, title, company_id FROM tickets WHERE ticket_number = ?", [ticketNumber]);
-        
-        if (tickets.length > 0) {
-          const dbTicket = tickets[0];
-          const ticketSqlId = dbTicket.id;
-          const assignedTo = dbTicket.assigned_to;
-          
-          // Verify mailbox belongs to company mapped to ticket via MySQL
-          let isMailboxValid = false;
-          if (dbTicket.company_id) {
-            try {
-              const compRows = await query("SELECT email_integration_id FROM companies WHERE id = ? LIMIT 1", [dbTicket.company_id]);
-              if (compRows.length > 0 && String(compRows[0].email_integration_id) === String(config.id)) {
-                isMailboxValid = true;
-              }
-            } catch (err) {
-              console.error("[OmniChannel] Verification of company email integration failed:", err);
-            }
-          }
+ const tickets = await query("SELECT id, assigned_to, ticket_number, title, company_id FROM tickets WHERE ticket_number = ?", [ticketNumber]);
+ 
+ if (tickets.length > 0) {
+ const dbTicket = tickets[0];
+ const ticketSqlId = dbTicket.id;
+ const assignedTo = dbTicket.assigned_to;
+ 
+ // Verify mailbox belongs to company mapped to ticket via MySQL
+ let isMailboxValid = false;
+ if (dbTicket.company_id) {
+ try {
+ const compRows = await query("SELECT email_integration_id FROM companies WHERE id = ? LIMIT 1", [dbTicket.company_id]);
+ if (compRows.length > 0 && String(compRows[0].email_integration_id) === String(config.id)) {
+ isMailboxValid = true;
+ }
+ } catch (err) {
+ console.error("[OmniChannel] Verification of company email integration failed:", err);
+ }
+ }
 
-          if (!isMailboxValid) {
-            console.warn(`[OmniChannel] Mailbox verification FAILED: config ${config.email_address} (ID: ${config.id}) does not belong to company ${dbTicket.company_id} mapped to ticket ${ticketNumber}. Skipping reply append.`);
-            return;
-          }
+ if (!isMailboxValid) {
+ console.warn(`[OmniChannel] Mailbox verification FAILED: config ${config.email_address} (ID: ${config.id}) does not belong to company ${dbTicket.company_id} mapped to ticket ${ticketNumber}. Skipping reply append.`);
+ return;
+ }
 
-          const activityData = {
-            subject, from, messageId,
-            body: body.substring(0, 5000),
-            attachments,
-            company_id: config.id,
-            timestamp: new Date().toISOString()
-          };
+ const activityData = {
+ subject, from, messageId,
+ body: body.substring(0, 5000),
+ attachments,
+ company_id: config.id,
+ timestamp: new Date().toISOString()
+ };
 
-          await execute(
-            "INSERT INTO ticket_activities (ticket_id, activity_type, visibility_type, created_by, created_by_name, message, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [ticketSqlId, 'email_received', 'public', from, from, "New email reply received", JSON.stringify(activityData)]
-          );
-          
-          await execute(
-            "INSERT INTO ticket_email_activities (ticket_id, direction, sender, recipient, subject, body, status) VALUES (?, 'inbound', ?, ?, ?, ?, 'success')",
-            [ticketSqlId, from, config.email_address, subject, body.substring(0, 5000)]
-          );
-          
-          await execute("UPDATE tickets SET updated_at = ? WHERE id = ?", [formatDate(new Date()), ticketSqlId]);
+ await execute(
+"INSERT INTO ticket_activities (ticket_id, activity_type, visibility_type, created_by, created_by_name, message, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+ [ticketSqlId, 'email_received', 'public', from, from,"New email reply received", JSON.stringify(activityData)]
+ );
+ 
+ await execute(
+"INSERT INTO ticket_email_activities (ticket_id, direction, sender, recipient, subject, body, status) VALUES (?, 'inbound', ?, ?, ?, ?, 'success')",
+ [ticketSqlId, from, config.email_address, subject, body.substring(0, 5000)]
+ );
+ 
+ await execute("UPDATE tickets SET updated_at = ? WHERE id = ?", [formatDate(new Date()), ticketSqlId]);
 
-          // Update ticket updated_at timestamp in MySQL
-          try {
-            await execute("UPDATE tickets SET updated_at = ? WHERE ticket_number = ?", [formatDate(new Date()), ticketNumber]);
-          } catch {}
+ // Update ticket updated_at timestamp in MySQL
+ try {
+ await execute("UPDATE tickets SET updated_at = ? WHERE ticket_number = ?", [formatDate(new Date()), ticketNumber]);
+ } catch {}
 
-          if (assignedTo) {
-            await NotificationEngine.create(
-              assignedTo,
-              `New Reply: ${ticketNumber}`,
-              `Client ${from} replied via ${config.company_name}.`,
-              'email_reply',
-              ticketNumber
-            );
-          }
-          return;
-        }
-      }
+ if (assignedTo) {
+ await NotificationEngine.create(
+ assignedTo,
+ `New Reply: ${ticketNumber}`,
+ `Client ${from} replied via ${config.company_name}.`,
+ 'email_reply',
+ ticketNumber
+ );
+ }
+ return;
+ }
+ }
 
-      // 2. New Ticket Creation
-      const ticketNumber = 'INC' + Math.floor(1000000 + Math.random() * 9000000);
-      
-      // Find company ID mapped to this config via MySQL
-      let companyId: string | null = null;
-      let companyName = config.company_name;
+ // 2. New Ticket Creation
+ const ticketNumber = 'INC' + Math.floor(1000000 + Math.random() * 9000000);
+ 
+ // Find company ID mapped to this config via MySQL
+ let companyId: string | null = null;
+ let companyName = config.company_name;
 
-      try {
-        const companies = await query("SELECT id, name FROM companies WHERE email_integration_id = ? LIMIT 1", [String(config.id)]);
-        if (companies.length > 0) {
-          companyId = String(companies[0].id);
-          companyName = companies[0].name;
-        }
-      } catch (err) {
-        console.error("[OmniChannel] Error finding company for integration ID:", config.id, err);
-      }
+ try {
+ const companies = await query("SELECT id, name FROM companies WHERE email_integration_id = ? LIMIT 1", [String(config.id)]);
+ if (companies.length > 0) {
+ companyId = String(companies[0].id);
+ companyName = companies[0].name;
+ }
+ } catch (err) {
+ console.error("[OmniChannel] Error finding company for integration ID:", config.id, err);
+ }
 
-      // SQL Insertion
-      const sqlResult = await execute(
-        "INSERT INTO tickets (ticket_number, caller, title, description, status, priority, channel, created_by, created_by_name, company_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [ticketNumber, from, subject, body.substring(0, 5000), 'New', '4 - Low', 'Email', from, from, companyId]
-      );
+ // SQL Insertion
+ const sqlResult = await execute(
+"INSERT INTO tickets (ticket_number, caller, title, description, status, priority, channel, created_by, created_by_name, company_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+ [ticketNumber, from, subject, body.substring(0, 5000), 'New', '4 - Low', 'Email', from, from, companyId]
+ );
 
-      const ticketSqlId = sqlResult.insertId;
+ const ticketSqlId = sqlResult.insertId;
 
-      // Store company context in activity
-      await execute(
-        "INSERT INTO ticket_activities (ticket_id, activity_type, visibility_type, created_by, created_by_name, message, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [ticketSqlId, 'email_received', 'public', from, from, `Ticket created via ${config.company_name}`, JSON.stringify({
-          subject, from, messageId, attachments, company_name: config.company_name
-        })]
-      );
+ // Store company context in activity
+ await execute(
+"INSERT INTO ticket_activities (ticket_id, activity_type, visibility_type, created_by, created_by_name, message, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+ [ticketSqlId, 'email_received', 'public', from, from, `Ticket created via ${config.company_name}`, JSON.stringify({
+ subject, from, messageId, attachments, company_name: config.company_name
+ })]
+ );
 
-      await execute(
-        "INSERT INTO ticket_email_activities (ticket_id, direction, sender, recipient, subject, body, status) VALUES (?, 'inbound', ?, ?, ?, ?, 'success')",
-        [ticketSqlId, from, config.email_address, subject, body.substring(0, 5000)]
-      );
+ await execute(
+"INSERT INTO ticket_email_activities (ticket_id, direction, sender, recipient, subject, body, status) VALUES (?, 'inbound', ?, ?, ?, ?, 'success')",
+ [ticketSqlId, from, config.email_address, subject, body.substring(0, 5000)]
+ );
 
-      // Ticket is already in MySQL from the INSERT above — no additional sync needed
+ // Ticket is already in MySQL from the INSERT above — no additional sync needed
 
-      // Queue Acknowledgement email instead of sending directly
-      try {
-        const ackSubject = `[${ticketNumber}] Ticket Created: ${subject}`;
-        const ackHtml = `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <h2 style="color: #2563eb;">${config.company_name} Support</h2>
-            <p>Hello,</p>
-            <p>We have received your email and a new support ticket has been opened for you.</p>
-            <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px solid #e2e8f0;">
-              <p style="margin: 0;"><strong>Ticket Number:</strong> ${ticketNumber}</p>
-              <p style="margin: 5px 0 0 0;"><strong>Subject:</strong> ${subject}</p>
-            </div>
-            <p>Our team will review your request shortly.</p>
-            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-            <p style="font-size: 12px; color: #64748b;">This is an automated notification from ${config.email_address}.</p>
-          </div>
-        `;
-        
-        await execute(
-          "INSERT INTO email_queue (ticket_id, company_id, email_integration_id, direction, recipient, subject, body, status) VALUES (?, ?, ?, 'outbound', ?, ?, ?, 'pending')",
-          [ticketSqlId, companyId, config.id, from, ackSubject, ackHtml]
-        );
+ // Queue Acknowledgement email instead of sending directly
+ try {
+ const ackSubject = `[${ticketNumber}] Ticket Created: ${subject}`;
+ const ackHtml = `
+ <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+ <h2 style="color: #2563eb;">${config.company_name} Support</h2>
+ <p>Hello,</p>
+ <p>We have received your email and a new support ticket has been opened for you.</p>
+ <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px solid #e2e8f0;">
+ <p style="margin: 0;"><strong>Ticket Number:</strong> ${ticketNumber}</p>
+ <p style="margin: 5px 0 0 0;"><strong>Subject:</strong> ${subject}</p>
+ </div>
+ <p>Our team will review your request shortly.</p>
+ <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+ <p style="font-size: 12px; color: #64748b;">This is an automated notification from ${config.email_address}.</p>
+ </div>
+ `;
+ 
+ await execute(
+"INSERT INTO email_queue (ticket_id, company_id, email_integration_id, direction, recipient, subject, body, status) VALUES (?, ?, ?, 'outbound', ?, ?, ?, 'pending')",
+ [ticketSqlId, companyId, config.id, from, ackSubject, ackHtml]
+ );
 
-        // Log success activity for queuing
-        await execute(
-          "INSERT INTO ticket_activities (ticket_id, activity_type, visibility_type, created_by, created_by_name, message, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          [
-            ticketSqlId,
-            "email_queued",
-            "internal",
-            "System",
-            `${config.company_name} Auto-Mail`,
-            `Acknowledgement email queued for ${from}`,
-            JSON.stringify({ to: from, subject: ackSubject, queuedAt: new Date().toISOString() })
-          ]
-        );
-      } catch (mailErr: any) {
-        console.error(`[OmniChannel] Failed to queue inbound auto-ack for ${ticketNumber}:`, mailErr.message);
-      }
+ // Log success activity for queuing
+ await execute(
+"INSERT INTO ticket_activities (ticket_id, activity_type, visibility_type, created_by, created_by_name, message, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+ [
+ ticketSqlId,
+"email_queued",
+"internal",
+"System",
+ `${config.company_name} Auto-Mail`,
+ `Acknowledgement email queued for ${from}`,
+ JSON.stringify({ to: from, subject: ackSubject, queuedAt: new Date().toISOString() })
+ ]
+ );
+ } catch (mailErr: any) {
+ console.error(`[OmniChannel] Failed to queue inbound auto-ack for ${ticketNumber}:`, mailErr.message);
+ }
 
-    } catch (error: any) {
-      console.error('[OmniChannel] Error processing email:', error.message);
-    }
-  }
+ } catch (error: any) {
+ console.error('[OmniChannel] Error processing email:', error.message);
+ }
+ }
 
-  /**
-   * Sends an email using a specific configuration
-   */
-  static async sendEmailByConfig(config: any, to: string, subject: string, html: string, attachments: any[] = []) {
-    try {
-      const transporter = await this.createTransporter(config);
-      
-      const mailOptions: any = {
-        from: `"${config.company_name} Support" <${config.email_address}>`,
-        to,
-        subject,
-        html,
-      };
+ /**
+ * Sends an email using a specific configuration
+ */
+ static async sendEmailByConfig(config: any, to: string, subject: string, html: string, attachments: any[] = []) {
+ try {
+ const transporter = await this.createTransporter(config);
+ 
+ const mailOptions: any = {
+ from: `"${config.company_name} Support" <${config.email_address}>`,
+ to,
+ subject,
+ html,
+ };
 
-      if (attachments && attachments.length > 0) {
-        mailOptions.attachments = attachments.map(att => ({
-          filename: att.filename,
-          path: att.url.startsWith('http') ? att.url : path.join(process.cwd(), 'public', att.url)
-        }));
-      }
+ if (attachments && attachments.length > 0) {
+ mailOptions.attachments = attachments.map(att => ({
+ filename: att.filename,
+ path: att.url.startsWith('http') ? att.url : path.join(process.cwd(), 'public', att.url)
+ }));
+ }
 
-      const info = await transporter.sendMail(mailOptions);
-      console.log(`[OmniChannel] Email sent via ${config.company_name} to ${to}`);
-      return info;
-    } catch (error: any) {
-      console.error(`[OmniChannel] Send error (${config.company_name}) - falling back to environment transporter:`, error.message);
-      try {
-        return await this.sendEmail(to, subject, html, attachments);
-      } catch (fallbackError: any) {
-        console.error(`[OmniChannel] Platform SMTP fallback dispatch failed:`, fallbackError.message);
-        throw error;
-      }
-    }
-  }
+ const info = await transporter.sendMail(mailOptions);
+ console.log(`[OmniChannel] Email sent via ${config.company_name} to ${to}`);
+ return info;
+ } catch (error: any) {
+ console.error(`[OmniChannel] Send error (${config.company_name}) - falling back to environment transporter:`, error.message);
+ try {
+ return await this.sendEmail(to, subject, html, attachments);
+ } catch (fallbackError: any) {
+ console.error(`[OmniChannel] Platform SMTP fallback dispatch failed:`, fallbackError.message);
+ throw error;
+ }
+ }
+ }
 
-  /**
-   * Helper to send email for a specific ticket (automatically detects company)
-   */
-  static async sendEmailForTicket(ticketNumber: string, to: string, subject: string, html: string, attachments: any[] = []) {
-    // 1. Try to find company context from activity or ticket
-    // For now, use the default config if not specified
-    const configs = await query("SELECT * FROM company_email_configs WHERE is_active = 1 ORDER BY is_default DESC LIMIT 1");
-    if (configs.length > 0) {
-      return this.sendEmailByConfig(configs[0], to, subject, html, attachments);
-    }
-    // Fallback to old behavior
-    return this.sendEmail(to, subject, html, attachments);
-  }
+ /**
+ * Helper to send email for a specific ticket (automatically detects company)
+ */
+ static async sendEmailForTicket(ticketNumber: string, to: string, subject: string, html: string, attachments: any[] = []) {
+ // 1. Try to find company context from activity or ticket
+ // For now, use the default config if not specified
+ const configs = await query("SELECT * FROM company_email_configs WHERE is_active = 1 ORDER BY is_default DESC LIMIT 1");
+ if (configs.length > 0) {
+ return this.sendEmailByConfig(configs[0], to, subject, html, attachments);
+ }
+ // Fallback to old behavior
+ return this.sendEmail(to, subject, html, attachments);
+ }
 
-  /**
-   * Legacy sendEmail (uses env defaults)
-   */
-  static async sendEmail(to: string, subject: string, html: string, attachments: any[] = []) {
-    try {
-      const transporter = this.getTransporter();
-      const fromEmail = process.env.SMTP_USER || 'info@technosprint.net';
-      const fromName = "Technosprint Support";
+ /**
+ * Legacy sendEmail (uses env defaults)
+ */
+ static async sendEmail(to: string, subject: string, html: string, attachments: any[] = []) {
+ try {
+ const transporter = this.getTransporter();
+ const fromEmail = process.env.SMTP_USER || 'info@technosprint.net';
+ const fromName ="Technosprint Support";
 
-      const mailOptions: any = {
-        from: `"${fromName}" <${fromEmail}>`,
-        to,
-        subject,
-        html,
-      };
+ const mailOptions: any = {
+ from: `"${fromName}" <${fromEmail}>`,
+ to,
+ subject,
+ html,
+ };
 
-      if (attachments && attachments.length > 0) {
-        mailOptions.attachments = attachments.map(att => ({
-          filename: att.filename,
-          path: att.url.startsWith('http') ? att.url : path.join(process.cwd(), 'public', att.url)
-        }));
-      }
+ if (attachments && attachments.length > 0) {
+ mailOptions.attachments = attachments.map(att => ({
+ filename: att.filename,
+ path: att.url.startsWith('http') ? att.url : path.join(process.cwd(), 'public', att.url)
+ }));
+ }
 
-      const info = await transporter.sendMail(mailOptions);
+ const info = await transporter.sendMail(mailOptions);
 
-      console.log(`[OmniChannel] Email sent to ${to}: ${info.messageId}`);
-      return info;
-    } catch (error: any) {
-      console.error('[OmniChannel] Send email error:', error.message);
-      throw error;
-    }
-  }
+ console.log(`[OmniChannel] Email sent to ${to}: ${info.messageId}`);
+ return info;
+ } catch (error: any) {
+ console.error('[OmniChannel] Send email error:', error.message);
+ throw error;
+ }
+ }
 
-  /**
-   * Processes the notification queue to send pending emails/WhatsApp messages.
-   */
-  static async processNotificationQueue() {
-    // console.log('[OmniChannel] Processing notification queue...');
-    try {
-      // In a real implementation, we would fetch unsent notifications from the DB
-      // and send them here. For now, we just ensure the engine is alive.
-    } catch (error: any) {
-      console.error('[OmniChannel] Notification queue error:', error.message);
-    }
-  }
+ /**
+ * Processes the notification queue to send pending emails/WhatsApp messages.
+ */
+ static async processNotificationQueue() {
+ // console.log('[OmniChannel] Processing notification queue...');
+ try {
+ // In a real implementation, we would fetch unsent notifications from the DB
+ // and send them here. For now, we just ensure the engine is alive.
+ } catch (error: any) {
+ console.error('[OmniChannel] Notification queue error:', error.message);
+ }
+ }
 }

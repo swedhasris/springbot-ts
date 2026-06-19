@@ -6,9 +6,9 @@
  */
 
 export async function seedInitialData() {
-  // Mark as seeded — data is loaded via connectit_db_backup_utf8.sql
-  const SEED_KEY = "connectit_seed_done_v1";
-  if (!localStorage.getItem(SEED_KEY)) {
-    localStorage.setItem(SEED_KEY, "1");
-  }
+ // Mark as seeded — data is loaded via connectit_db_backup_utf8.sql
+ const SEED_KEY ="connectit_seed_done_v1";
+ if (!localStorage.getItem(SEED_KEY)) {
+ localStorage.setItem(SEED_KEY,"1");
+ }
 }

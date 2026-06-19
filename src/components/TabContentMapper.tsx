@@ -1,7 +1,7 @@
-import React, { Suspense, lazy, useMemo } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import { AccessRestricted } from "./AccessRestricted";
-import { isRestrictedPath } from "./WorkspaceLayout";
+import React, { Suspense, lazy, useMemo } from"react";
+import { useAuth } from"../contexts/AuthContext";
+import { AccessRestricted } from"./AccessRestricted";
+import { isRestrictedPath } from"./WorkspaceLayout";
 
 // Lazy load page components to share chunks with App.tsx
 const Dashboard = lazy(() => import("../pages/Dashboard").then(m => ({ default: m.Dashboard })));
@@ -52,141 +52,141 @@ const AIAssistant = lazy(() => import("../pages/ai/AIAssistant").then(m => ({ de
 
 /**
  * Maps a path string to a React component without using a nested Router.
- * This avoids the "Router inside Router" error entirely.
+ * This avoids the"Router inside Router" error entirely.
  */
 function resolveComponent(path: string): React.ReactNode {
-  const cleanPath = path.split("?")[0];
+ const cleanPath = path.split("?")[0];
 
-  // Static routes
-  switch (cleanPath) {
-    case "/my-dashboard":
-    case "/":
-      return <MyDashboard />;
-    case "/dashboard":
-      return <Dashboard />;
-    case "/tickets":
-      return <Tickets />;
-    case "/history":
-      return <GlobalHistory />;
-    case "/sla":
-      return <SLAManagement />;
-    case "/sla-management":
-      return <SLAManagementPremium />;
-    case "/approvals":
-      return <Approvals />;
-    case "/users":
-      return <Users />;
-    case "/incident-categories":
-      return <IncidentCategoryManagement />;
-    case "/timesheet":
-      return <Timesheet />;
-    case "/timesheet/weekly":
-      return <TimesheetWeekly />;
-    case "/timesheet/reports":
-      return <TimesheetReports />;
-    case "/reports":
-      return <Reports />;
-    case "/forecasting-planning":
-      return <ForecastingPlanning />;
-    case "/catalog":
-      return <ServiceCatalog />;
-    case "/cmdb":
-      return <CMDB />;
-    case "/conversations":
-      return <Conversations />;
-    case "/problem":
-      return <ProblemManagement />;
-    case "/change":
-      return <ChangeManagement />;
-    case "/kb":
-      return <KnowledgeBase />;
-    case "/service-portal":
-      return <ServicePortal />;
-    case "/calendar":
-      return <Calendar />;
-    case "/access-control":
-      return <AccessControl />;
-    case "/leaderboard":
-      return <Leaderboard />;
-    case "/approved-tickets":
-      return <ApprovedTickets />;
-    case "/companies":
-    case "/companies/new":
-      return <Companies />;
-    case "/timesheet-approvals":
-      return <TimesheetApprovals />;
-    case "/groups":
-      return <Groups />;
-    case "/clear-users":
-      return <ClearUsers />;
-    case "/email-integrations":
-      return <EmailIntegrations />;
-    case "/branding":
-      return <BrandingSettings />;
-    case "/settings":
-      return <Settings />;
-    case "/activity-tracker":
-      return <ActivityTracker />;
-    case "/data-analytics":
-      return <DataAnalytics />;
-    case "/global-search":
-      return <GlobalSearch />;
-    case "/meetings":
-      return <MeetingManagement />;
-    case "/create-meeting":
-      return <CreateMeeting />;
-    case "/calls":
-      return <CallLogs />;
-    case "/calls/new":
-      return <CreateCall />;
-    case "/ai-assistant":
-      return <AIAssistant />;
-    default:
-      break;
-  }
+ // Static routes
+ switch (cleanPath) {
+ case"/my-dashboard":
+ case"/":
+ return <MyDashboard />;
+ case"/dashboard":
+ return <Dashboard />;
+ case"/tickets":
+ return <Tickets />;
+ case"/history":
+ return <GlobalHistory />;
+ case"/sla":
+ return <SLAManagement />;
+ case"/sla-management":
+ return <SLAManagementPremium />;
+ case"/approvals":
+ return <Approvals />;
+ case"/users":
+ return <Users />;
+ case"/incident-categories":
+ return <IncidentCategoryManagement />;
+ case"/timesheet":
+ return <Timesheet />;
+ case"/timesheet/weekly":
+ return <TimesheetWeekly />;
+ case"/timesheet/reports":
+ return <TimesheetReports />;
+ case"/reports":
+ return <Reports />;
+ case"/forecasting-planning":
+ return <ForecastingPlanning />;
+ case"/catalog":
+ return <ServiceCatalog />;
+ case"/cmdb":
+ return <CMDB />;
+ case"/conversations":
+ return <Conversations />;
+ case"/problem":
+ return <ProblemManagement />;
+ case"/change":
+ return <ChangeManagement />;
+ case"/kb":
+ return <KnowledgeBase />;
+ case"/service-portal":
+ return <ServicePortal />;
+ case"/calendar":
+ return <Calendar />;
+ case"/access-control":
+ return <AccessControl />;
+ case"/leaderboard":
+ return <Leaderboard />;
+ case"/approved-tickets":
+ return <ApprovedTickets />;
+ case"/companies":
+ case"/companies/new":
+ return <Companies />;
+ case"/timesheet-approvals":
+ return <TimesheetApprovals />;
+ case"/groups":
+ return <Groups />;
+ case"/clear-users":
+ return <ClearUsers />;
+ case"/email-integrations":
+ return <EmailIntegrations />;
+ case"/branding":
+ return <BrandingSettings />;
+ case"/settings":
+ return <Settings />;
+ case"/activity-tracker":
+ return <ActivityTracker />;
+ case"/data-analytics":
+ return <DataAnalytics />;
+ case"/global-search":
+ return <GlobalSearch />;
+ case"/meetings":
+ return <MeetingManagement />;
+ case"/create-meeting":
+ return <CreateMeeting />;
+ case"/calls":
+ return <CallLogs />;
+ case"/calls/new":
+ return <CreateCall />;
+ case"/ai-assistant":
+ return <AIAssistant />;
+ default:
+ break;
+ }
 
-  // Dynamic routes – match patterns
-  if (cleanPath.startsWith("/tickets/")) {
-    return <TicketDetail />;
-  }
-  if (cleanPath.startsWith("/timesheet/") && cleanPath !== "/timesheet/weekly" && cleanPath !== "/timesheet/reports") {
-    return <Timesheet />;
-  }
-  if (cleanPath.startsWith("/companies/")) {
-    return <Companies />;
-  }
-  if (/^\/ts-meeting\/[^/]+\/lobby$/.test(cleanPath)) {
-    return <TSMeetingLobby />;
-  }
-  if (/^\/ts-meeting\/[^/]+\/room$/.test(cleanPath)) {
-    return <TSMeetingRoom />;
-  }
-  if (cleanPath.startsWith("/calls/")) {
-    return <CallDetail />;
-  }
+ // Dynamic routes – match patterns
+ if (cleanPath.startsWith("/tickets/")) {
+ return <TicketDetail />;
+ }
+ if (cleanPath.startsWith("/timesheet/") && cleanPath !=="/timesheet/weekly" && cleanPath !=="/timesheet/reports") {
+ return <Timesheet />;
+ }
+ if (cleanPath.startsWith("/companies/")) {
+ return <Companies />;
+ }
+ if (/^\/ts-meeting\/[^/]+\/lobby$/.test(cleanPath)) {
+ return <TSMeetingLobby />;
+ }
+ if (/^\/ts-meeting\/[^/]+\/room$/.test(cleanPath)) {
+ return <TSMeetingRoom />;
+ }
+ if (cleanPath.startsWith("/calls/")) {
+ return <CallDetail />;
+ }
 
-  // Fallback
-  return <MyDashboard />;
+ // Fallback
+ return <MyDashboard />;
 }
 
 export function TabContentMapper({ path }: { path: string }) {
-  const { profile } = useAuth();
-  const restrictedModules = profile?.restrictedModules || [];
+ const { profile } = useAuth();
+ const restrictedModules = profile?.restrictedModules || [];
 
-  const component = useMemo(() => {
-    if (isRestrictedPath(path, restrictedModules)) {
-      return <AccessRestricted />;
-    }
-    return resolveComponent(path);
-  }, [path, restrictedModules]);
+ const component = useMemo(() => {
+ if (isRestrictedPath(path, restrictedModules)) {
+ return <AccessRestricted />;
+ }
+ return resolveComponent(path);
+ }, [path, restrictedModules]);
 
-  return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-4 border-sn-green border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
-      {component}
-    </Suspense>
-  );
+ return (
+ <Suspense fallback={
+ <div className="flex items-center justify-center min-h-[400px]">
+ <div className="w-8 h-8 border-4 border-sn-green border-t-transparent rounded-full animate-spin" />
+ </div>
+ }>
+ {component}
+ </Suspense>
+ );
 }

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Orbitron:wght@500;700;900&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "./styles/design-system.css";
 
@@ -7,10 +7,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-outfit: "Outfit", sans-serif;
-  --font-orbitron: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "Inter", "Segoe UI", "Roboto", Arial, sans-serif;
+  --font-outfit: "Inter", "Segoe UI", "Roboto", Arial, sans-serif;
+  --font-orbitron: "Inter", "Segoe UI", "Roboto", Arial, sans-serif;
+  --font-mono: "Inter", "Segoe UI", "Roboto", Arial, sans-serif;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -150,11 +150,20 @@
   }
 
   body {
-    @apply text-foreground font-sans antialiased transition-colors duration-200 min-h-screen;
+    @apply text-foreground font-sans text-sm font-normal antialiased transition-colors duration-200 min-h-screen;
     background: linear-gradient(-45deg, #f8fafc, #eff6ff, #dbeafe, #eff6ff);
     background-size: 400% 400%;
     animation: gradientAnimation 20s ease infinite;
   }
+
+  /* Global Typography Standards */
+  h1 { @apply text-2xl font-semibold; }
+  h2 { @apply text-xl font-semibold; }
+  h3 { @apply text-base font-medium; }
+  label { @apply text-sm font-medium; }
+  button { @apply text-sm font-medium; }
+  table th, table td { @apply text-[13px] font-normal; }
+  .helper-text { @apply text-xs font-normal; }
 
   .dark body {
     background: linear-gradient(-45deg, #0b1220, #0f172a, #111827, #0b1220);

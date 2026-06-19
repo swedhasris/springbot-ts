@@ -1,2226 +1,2226 @@
-import React, { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { doc, onSnapshot, updateDoc, serverTimestamp, collection, addDoc, query, orderBy, getDocs, where, setDoc } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { useAuth } from "../contexts/AuthContext";
-import { ROLE_HIERARCHY, Role } from "../lib/roles";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, Send, History, MessageSquare, Save, Trash2, CheckCircle2, Clock, Plus, Star, Play, Square, Eye, AlertCircle, Lock, Globe, Users, Search, Zap, ShieldAlert } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { SLATimer } from "../components/SLATimer";
-import { useServiceCatalog } from "../lib/serviceCatalog";
-import { calculateSLADeadline } from "../lib/slaUtils";
-import confetti from "canvas-confetti";
-import { captureScreenshot, analyzeWorkContext, saveWorkSession, type WorkAnalysis } from "../lib/workSessionAI";
-import { ActivityTimeline } from "../components/ActivityTimeline";
-import { SLADelayDialog } from "../components/SLADelayDialog";
-import { createDefaultSlaDelayMeta, getEffectiveSlaDelayState, type SlaDelayLogEntry, type SlaDelayMeta, type SlaDelayResponseType } from "../lib/slaDelayUtils";
-import { useActivityTracker } from "../contexts/ActivityTrackerContext";
-import { SaveActivityModal, type SessionFormType } from "../components/SaveActivityModal";
-import { useWorkspace, useCurrentTab } from "../components/WorkspaceLayout";
+import React, { useEffect, useState, useRef } from"react";
+import { useParams, useNavigate } from"react-router-dom";
+import { doc, onSnapshot, updateDoc, serverTimestamp, collection, addDoc, query, orderBy, getDocs, where, setDoc } from"firebase/firestore";
+import { db, handleFirestoreError, OperationType } from"../lib/firebase";
+import { useAuth } from"../contexts/AuthContext";
+import { ROLE_HIERARCHY, Role } from"../lib/roles";
+import { Button } from"@/components/ui/button";
+import { ChevronLeft, Send, History, MessageSquare, Save, Trash2, CheckCircle2, Clock, Plus, Star, Play, Square, Eye, AlertCircle, Lock, Globe, Users, Search, Zap, ShieldAlert } from"lucide-react";
+import { cn } from"@/lib/utils";
+import { SLATimer } from"../components/SLATimer";
+import { useServiceCatalog } from"../lib/serviceCatalog";
+import { calculateSLADeadline } from"../lib/slaUtils";
+import confetti from"canvas-confetti";
+import { captureScreenshot, analyzeWorkContext, saveWorkSession, type WorkAnalysis } from"../lib/workSessionAI";
+import { ActivityTimeline } from"../components/ActivityTimeline";
+import { SLADelayDialog } from"../components/SLADelayDialog";
+import { createDefaultSlaDelayMeta, getEffectiveSlaDelayState, type SlaDelayLogEntry, type SlaDelayMeta, type SlaDelayResponseType } from"../lib/slaDelayUtils";
+import { useActivityTracker } from"../contexts/ActivityTrackerContext";
+import { SaveActivityModal, type SessionFormType } from"../components/SaveActivityModal";
+import { useWorkspace, useCurrentTab } from"../components/WorkspaceLayout";
 
 export function TicketDetail() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { user, profile } = useAuth();
-  const { categories, subcategories, serviceProviders, groups } = useServiceCatalog();
-  const { status: trackerStatus, elapsed: trackerElapsed, startWatcher, stopWatcher, setSelectedIncident, entries: trackerEntries, summary: trackerSummary } = useActivityTracker();
-  const isActiveSession = trackerStatus === 'active';
-
-  const currentTab = useCurrentTab();
-  const { setTabTitle } = useWorkspace();
-
-  const [ticket, setTicket] = useState<any>(null);
-
-  useEffect(() => {
-    if (ticket && currentTab?.tabId && setTabTitle) {
-      const num = ticket.number || "Ticket";
-      const desc = ticket.short_description || ticket.title || "Details";
-      setTabTitle(currentTab.tabId, `${num}: ${desc}`);
-    }
-  }, [ticket, currentTab?.tabId, setTabTitle]);
-  const [editedTicket, setEditedTicket] = useState<any>(null);
-  const customFieldsRef = useRef<any>(null);
-  const canEdit = profile?.role ? (ROLE_HIERARCHY[profile.role as Role] >= ROLE_HIERARCHY["agent"]) : false;
-
-  const [comments, setComments] = useState<any[]>([]);
-  const [newComment, setNewComment] = useState("");
-  const [workNote, setWorkNote] = useState("");
-  const [emailWorkNote, setEmailWorkNote] = useState(false);
-  const [emailComment, setEmailComment] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [agents, setAgents] = useState<any[]>([]);
-  const [incidentCategories, setIncidentCategories] = useState<string[]>([]);
-  const [dynamicFields, setDynamicFields] = useState<any[]>([]);
-  const [dynamicOptions, setDynamicOptions] = useState<Record<string, any[]>>({});
-
-
-
-  // AI Work Session state
-  const [aiProcessing, setAiProcessing] = useState(false);
-  const [aiNotes, setAiNotes] = useState<WorkAnalysis | null>(null);
-  const [aiStatusMessage, setAiStatusMessage] = useState("");
-  const [showSessionPopup, setShowSessionPopup] = useState(false);
-  const [savingSession, setSavingSession] = useState(false);
-  const [sessionForm, setSessionForm] = useState<SessionFormType>({
-    entryDate: new Date().toISOString().split("T")[0],
-    startTime: "",
-    endTime: "",
-    minutesWorked: 0,
-    task: "Ticket Resolution",
-    customTask: "",
-    workType: "Support",
-    shortDescription: "",
-    description: "",
-    notes: "",
-    billable: "Billable",
-  });
-  const [timelineRefresh, setTimelineRefresh] = useState(0);
-  const [pastSessions, setPastSessions] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (ticket?.number) {
-      fetch(`/api/activity-sessions?ticket_number=${ticket.number}`)
-        .then(r => r.json())
-        .then(data => {
-          if (Array.isArray(data)) setPastSessions(data);
-        })
-        .catch(() => {});
-    }
-  }, [ticket?.number, timelineRefresh]);
-  const [isPosting, setIsPosting] = useState(false);
-  const [postMessage, setPostMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
-  const [slaDelaySaving, setSlaDelaySaving] = useState(false);
-  const [slaDelayForm, setSlaDelayForm] = useState({
-    delayReason: "",
-    progressUpdate: "",
-    blockers: "",
-    eta: "",
-    nextActionPlan: "",
-    resolutionPercentage: "",
-    rootCauseAnalysis: "",
-    correctiveActionDetails: "",
-    finalResolutionExplanation: "",
-    dependencyDetails: "",
-    preventiveAction: "",
-  });
-
-
-  const visibleCategories = categories.filter((item) => item.status === 'active');
-  const visibleSubcategories = subcategories.filter(s => s.categoryId === editedTicket?.categoryId && s.status === 'active');
-  const visibleProviders = serviceProviders.filter(p => p.subcategoryId === editedTicket?.subcategoryId && p.status === 'active');
-  const visibleGroups = groups.filter(g => g.serviceProviderId === editedTicket?.serviceId && g.status === 'active');
-
-  useEffect(() => {
-    getDocs(collection(db, "users")).then(snap => {
-      const usersList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAgents(usersList.filter((u: any) => ROLE_HIERARCHY[u.role as Role] >= ROLE_HIERARCHY["agent"]));
-    }).catch(() => {
-      // Fallback: load agents from MySQL API
-      fetch('/api/users').then(r => r.json()).then((usersList: any[]) => {
-        setAgents(usersList.filter((u: any) => ['agent', 'admin', 'sub_admin', 'super_admin', 'ultra_super_admin'].includes(u.role)));
-      }).catch(() => { });
-    });
-    // Fetch active incident categories and options dynamically
-    fetch("/api/incident-categories?active_only=true")
-      .then(r => r.json())
-      .then(async (data) => {
-        if (Array.isArray(data)) {
-          setIncidentCategories(data.map((c: any) => c.name));
-          setDynamicFields(data);
-
-          // Fetch options for each dynamic field
-          const optionsMap: Record<string, any[]> = {};
-          await Promise.all(
-            data.map(async (cat: any) => {
-              try {
-                const res = await fetch(`/api/incident-categories/options?category_id=${cat.id}&active_only=true`);
-                if (res.ok) {
-                  const opts = await res.json();
-                  optionsMap[cat.id] = opts;
-                }
-              } catch (e) {
-                console.error("Error loading options for category", cat.id, e);
-              }
-            })
-          );
-          setDynamicOptions(optionsMap);
-        }
-      })
-      .catch(() => {
-        setIncidentCategories([
-          "Hardware Issue", "Software Issue", "Network Issue", "System Access",
-          "Security Issue", "Login Problem", "Email Issue", "Performance Issue",
-          "Service Request", "Other"
-        ]);
-      });
-  }, []);
-
-  // DYNAMIC GROUP FILTERING: Only show users belonging to the selected group, or all agents if no group selected
-  const selectedGroupObj = groups.find(g => g.name === editedTicket?.assignmentGroup);
-  const filteredAgents = selectedGroupObj?.memberIds
-    ? agents.filter(a => selectedGroupObj.memberIds?.includes(a.id) || selectedGroupObj.memberIds?.includes(a.uid))
-    : agents;
-
-  // Note: Local Firestore timer syncing is removed in favor of global AI Activity Tracker.
-
-  useEffect(() => {
-    setTicket(null);
-    setEditedTicket(null);
-    customFieldsRef.current = null;
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    
-    // Resolve ticket_number to actual document ID if needed
-    if (id.startsWith('INC') || id.startsWith('REQ') || id.startsWith('TSK')) {
-      const q = query(collection(db, "tickets"), where("number", "==", id));
-      getDocs(q).then((snap) => {
-        if (!snap.empty) {
-          const actualId = snap.docs[0].id;
-          navigate(`/tickets/${actualId}`, { replace: true });
-        } else {
-          navigate("/tickets");
-        }
-      }).catch((e) => {
-        console.error(e);
-        navigate("/tickets");
-      });
-      return;
-    }
-    const unsubscribe = onSnapshot(doc(db, "tickets", id), (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const data = { id: docSnapshot.id, ...docSnapshot.data() } as any;
-        setTicket(data);
-        setEditedTicket((prev: any) => {
-          const mergedFields = customFieldsRef.current || {};
-          if (prev && prev.status !== undefined) {
-            return {
-              ...prev,
-              customFields: {
-                ...(prev.customFields || {}),
-                ...mergedFields
-              }
-            };
-          }
-          return {
-            ...data,
-            customFields: {
-              ...(data.customFields || {}),
-              ...mergedFields
-            }
-          };
-        });
-      } else {
-        navigate("/tickets");
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `tickets/${id}`);
-    });
-    return unsubscribe;
-  }, [id, navigate]);
-
-  useEffect(() => {
-    if (!id) return;
-    fetch(`/api/tickets/${id}/custom-fields`)
-      .then(r => r.json())
-      .then(savedFields => {
-        if (savedFields && typeof savedFields === 'object') {
-          customFieldsRef.current = savedFields;
-          setEditedTicket((prev: any) => {
-            if (!prev) return null;
-            return {
-              ...prev,
-              customFields: {
-                ...(prev.customFields || {}),
-                ...savedFields
-              }
-            };
-          });
-        }
-      })
-      .catch(err => console.error("Error fetching custom fields mapping:", err));
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    const q = query(collection(db, "tickets", id, "comments"), orderBy("createdAt", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `tickets/${id}/comments`);
-    });
-    return unsubscribe;
-  }, [id]);
-
-  const handleUpdate = async () => {
-    if (!id || !user || !editedTicket) return;
-
-    const hasCategoryAccess = ["admin", "super_admin", "ultra_super_admin"].includes(profile?.role || "") ||
-      ["arun.g@technosprint.net", "swedhasris@gmail.com", "ulter@technosprint.net", "admin@technosprint.net", "admin@connectit.local", "demo-admin@connectit.local", "demo-super_admin@connectit.local", "demo-ultra_super_admin@connectit.local"].includes(user?.email || profile?.email || "");
-    if (hasCategoryAccess) {
-      for (const field of dynamicFields) {
-        if (!editedTicket?.customFields?.[field.id]) {
-          alert(`Please select a value for: ${field.name}`);
-          return;
-        }
-      }
-    }
-
-    const isPaused = editedTicket.status === "On Hold" || editedTicket.status === "Waiting for Customer" || editedTicket.status === "Awaiting User" || editedTicket.status === "Awaiting Vendor";
-    if (isPaused && (!editedTicket.onHoldReason || editedTicket.onHoldReason.trim() === "")) {
-      alert("Please select a Pause Reason before putting the ticket in a paused state.");
-      return;
-    }
-
-    setIsUpdating(true);
-
-
-
-    try {
-      const historyEntries: any[] = [];
-      const fields = ["incidentCategory", "incident_category", "category", "categoryId", "subcategory", "subcategoryId", "service", "serviceId", "serviceProvider", "status", "onHoldReason", "impact", "urgency", "assignmentGroup", "title", "description", "assignedTo", "affectedUser", "resolutionCode", "resolutionNotes", "resolutionMethod", "closureReason", "watchList", "workNotesList", "businessPhone", "location", "configurationItem", "computerName", "knowledgeArticleUsed", "originalAssignmentGroup", "acknowledged", "passwordReset", "rackspaceTicketNo", "additionalInformation"];
-
-      fields.forEach(field => {
-        if (editedTicket[field] !== (ticket[field] || "")) {
-          const entry = {
-            action: `Field ${field} updated from ${ticket[field] || "none"} to ${editedTicket[field] || "none"}`,
-            timestamp: new Date().toISOString(),
-            user: profile?.name || user.email
-          };
-          historyEntries.push(entry);
-        }
-      });
-
-      // Special check: If only resolution notes/code were changed, but no other fields in the list, we still want to save.
-      // The 'Submit' button should always save editedTicket.
-
-      const { id: _, ...payload } = editedTicket;
-
-      const assignedUserName = editedTicket.assignedTo
-        ? agents.find(a => a.id === editedTicket.assignedTo)?.name
-        || agents.find(a => a.id === editedTicket.assignedTo)?.email
-        || editedTicket.assignedToName || ""
-        : "";
-
-      const updates: any = {
-        ...payload,
-        assignedToName: assignedUserName,
-        updatedAt: serverTimestamp(),
-        history: [...(ticket.history || []), ...historyEntries]
-      };
-
-      const isResolved = editedTicket.status === "Resolved" || editedTicket.status === "Closed";
-      const isPaused = editedTicket.status === "On Hold" || editedTicket.status === "Waiting for Customer" || editedTicket.status === "Awaiting User" || editedTicket.status === "Awaiting Vendor";
-
-      const isSlaBreached = effectiveSlaDelay?.usage.breached || effectiveSlaDelay?.meta.latestStatus === "breached";
-      const hasSubmittedRca = !!(effectiveSlaDelay?.meta.breachReasonSubmittedAt || effectiveSlaDelay?.meta.rootCauseAnalysis?.trim());
-      if (isResolved && isSlaBreached && !hasSubmittedRca) {
-        alert("This ticket has breached its SLA. You must submit a Root Cause Analysis (RCA) before resolving or closing the ticket.");
-        setLocalPendingType("rca");
-        setIsUpdating(false);
-        return;
-      }
-
-      if (editedTicket.status !== ticket.status) {
-
-        // Stop Response SLA if the state is changed out of "New" (i.e. acknowledging the ticket)
-        if (editedTicket.status !== "New" && !ticket.firstResponseAt) {
-          const responseNow = new Date();
-          updates.firstResponseAt = responseNow.toISOString();
-          updates.responseSlaStatus = "Completed";
-
-          // START Resolution SLA from this moment using stored SLA metadata
-          updates.resolutionSlaStatus = "In Progress";
-          const resHours = ticket.slaResolutionHours || 24;
-          updates.resolutionDeadline = calculateSLADeadline(responseNow, resHours, {
-            businessHours: ticket.businessHours,
-            excludeWeekends: ticket.excludeWeekends,
-            excludeHolidays: ticket.excludeHolidays
-          }).toISOString();
-          updates.resolutionSlaStartTime = responseNow.toISOString();
-        }
-
-        if (isResolved && !ticket.resolvedAt) {
-          updates.resolvedAt = new Date().toISOString();
-          updates.resolvedBy = profile?.name || user.email;
-          updates.resolutionSlaStatus = "Completed";
-          updates.onHoldStart = null;
-
-          // Ensure resolution fields are present if being resolved
-          if (!editedTicket.resolutionCode || !editedTicket.resolutionNotes || !editedTicket.resolutionMethod) {
-            alert("Please provide Resolution Code, Resolution Method, and Resolution Notes before resolving.");
-            setIsUpdating(false);
-            return;
-          }
-
-          // Calculate resolution duration
-          const createdAtMs = ticket.createdAt?.seconds ? ticket.createdAt.seconds * 1000 : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
-          const resolvedAtMs = Date.now();
-          const durationMs = resolvedAtMs - createdAtMs;
-          updates.resolutionDuration = Math.max(0, durationMs);
-        } else if (!isResolved && ticket.resolvedAt) {
-          updates.resolvedAt = null;
-          updates.resolvedBy = null;
-          updates.resolutionDuration = null;
-          updates.resolutionSlaStatus = "In Progress";
-        }
-
-        if (isPaused && !isResolved) {
-          updates.onHoldStart = new Date().toISOString();
-          updates.onHoldReason = editedTicket.onHoldReason || "";
-        } else if ((ticket.status === "On Hold" || ticket.status === "Waiting for Customer" || ticket.status === "Awaiting User" || ticket.status === "Awaiting Vendor") && !isPaused) {
-          const onHoldStartStr = ticket.onHoldStart || new Date().toISOString();
-          const onHoldStart = new Date(onHoldStartStr).getTime();
-          const now = new Date().getTime();
-          const pauseDuration = Math.max(0, now - onHoldStart);
-
-          const totalPaused = (Number(ticket.totalPausedTime) || 0) + pauseDuration;
-          updates.totalPausedTime = totalPaused;
-          updates.onHoldStart = null;
-          updates.onHoldReason = null;
-
-          if (ticket.resolutionDeadline) {
-            const oldRes = new Date(ticket.resolutionDeadline).getTime();
-            if (!isNaN(oldRes)) updates.resolutionDeadline = new Date(oldRes + pauseDuration).toISOString();
-          }
-          if (ticket.responseDeadline && !ticket.firstResponseAt) {
-            const oldResp = new Date(ticket.responseDeadline).getTime();
-            if (!isNaN(oldResp)) updates.responseDeadline = new Date(oldResp + pauseDuration).toISOString();
-          }
-        }
-      }
-
-      // --- ADVANCED SCORING LOGIC ---
-      let pointsAwarded = 0;
-      if (isResolved && !ticket.resolvedAt) {
-        // 1. Priority Base Points
-        const priorityStr = ticket.priority || "4 - Low";
-        let basePoints = 10;
-        if (priorityStr.includes("1")) basePoints = 100;
-        else if (priorityStr.includes("2")) basePoints = 50;
-        else if (priorityStr.includes("3")) basePoints = 25;
-
-        pointsAwarded += basePoints;
-
-        // 2. Response Bonus (if acknowledged on time)
-        if (ticket.responseSlaStatus === "Completed") {
-          pointsAwarded += 50;
-        }
-
-        // 3. Resolution Speed Bonus
-        if (ticket.resolutionDeadline) {
-          const deadline = new Date(ticket.resolutionDeadline).getTime();
-          const resolvedAtMs = new Date().getTime();
-          const createdAtMs = ticket.createdAt?.seconds ? ticket.createdAt.seconds * 1000 : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : 0);
-
-          if (createdAtMs > 0 && resolvedAtMs < deadline) {
-            const totalSla = deadline - createdAtMs;
-            const timeSaved = deadline - resolvedAtMs;
-            const speedBonus = Math.round((timeSaved / totalSla) * 100);
-            pointsAwarded += Math.max(speedBonus, 10); // Min 10 points for meeting SLA
-          } else if (resolvedAtMs >= deadline) {
-            pointsAwarded = Math.round(pointsAwarded * 0.5); // Penalty: 50% points if breached
-          }
-        }
-      }
-
-      const ticketRef = doc(db, "tickets", id);
-      const finalUpdates = {
-        ...updates,
-        points: pointsAwarded > 0 ? (ticket.points || 0) + pointsAwarded : (ticket.points || 0)
-      };
-
-      // Save dynamic custom fields selections on update
-      if (hasCategoryAccess && editedTicket.customFields && Object.keys(editedTicket.customFields).length > 0) {
-        try {
-          await fetch(`/api/tickets/${id}/custom-fields`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ customFields: editedTicket.customFields })
-          });
-        } catch (e) {
-          console.error("Error saving dynamic custom fields:", e);
-        }
-      }
-      await updateDoc(ticketRef, finalUpdates);
-      setTimelineRefresh(prev => prev + 1);
-      // Dispatch real-time notification
-      try {
-        fetch("/api/notifications/dispatch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ticket: {
-              id: id,
-              ticket_number: ticket.number,
-              created_by: ticket.createdBy,
-              created_by_name: ticket.createdByName || ticket.caller,
-              assigned_to: finalUpdates.assignedTo !== undefined ? finalUpdates.assignedTo : ticket.assignedTo,
-              assigned_to_name: finalUpdates.assignedToName !== undefined ? finalUpdates.assignedToName : ticket.assignedToName,
-              status: finalUpdates.status !== undefined ? finalUpdates.status : ticket.status,
-              priority: finalUpdates.priority !== undefined ? finalUpdates.priority : ticket.priority
-            },
-            actorId: user.uid,
-            actorName: profile?.name || user.email,
-            type: "update",
-            oldStatus: ticket.status,
-            newStatus: finalUpdates.status !== undefined ? finalUpdates.status : ticket.status,
-            oldAssignee: ticket.assignedTo,
-            newAssignee: finalUpdates.assignedTo !== undefined ? finalUpdates.assignedTo : ticket.assignedTo
-          })
-        });
-      } catch (e) {
-        console.error("Failed to dispatch update notification:", e);
-      }
-
-      // Assignment changes and all other field changes are securely generated by the backend API.
-
-      if (pointsAwarded > 0) {
-        confetti({
-          particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ["#22c55e", "#fbbf24", "#3b82f6"]
-        });
-        alert(`Awesome resolution! You earned ${pointsAwarded} points!\n\nBreakdown:\n- Priority Base: Included\n- Response Bonus: ${ticket.responseSlaStatus === "Completed" ? "Yes" : "No"}\n- Speed Bonus: Applied`);
-        setTimeout(() => navigate("/tickets"), 1500);
-      } else {
-        alert("Incident updated successfully");
-        if (isResolved) navigate("/tickets");
-      }
-    } catch (error: any) {
-      console.error("Error updating ticket:", error);
-      alert(`Failed to update incident: ${error.message || "Unknown error"}`);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleAddComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim() || !id || !user) return;
-    setIsPosting(true);
-    try {
-      // Post to API-backed activity timeline (customer-visible comment)
-      const res = await fetch(`/api/tickets/${id}/activities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activity_type: 'comment',
-          visibility_type: 'public',
-          created_by: user.uid,
-          created_by_name: profile?.name || user.email,
-          message: newComment.trim(),
-          email_note: emailComment
-        })
-      });
-      if (!res.ok) throw new Error('Failed to post comment');
-
-      // Update Firestore ticket metadata (SLA first response)
-      try {
-        const now = new Date().toISOString();
-        const updates: any = { updatedAt: serverTimestamp(), history: [...(ticket.history || []), { action: "Comment Added", timestamp: now, user: profile?.name || user.email }] };
-        if (!ticket.firstResponseAt) {
-          updates.firstResponseAt = now;
-          updates.responseSlaStatus = "Completed";
-          // START Resolution SLA from this moment
-          updates.resolutionSlaStatus = "In Progress";
-          const resHours = ticket.slaResolutionHours || 24;
-          const resolutionWindowMs = resHours * 60 * 60 * 1000;
-          updates.resolutionDeadline = new Date(new Date(now).getTime() + resolutionWindowMs).toISOString();
-          updates.resolutionSlaStartTime = now;
-        }
-        await updateDoc(doc(db, "tickets", id), updates);
-      } catch (e) { /* Firestore update non-critical */ }
-
-      setNewComment("");
-      setEmailComment(false);
-      setTimelineRefresh(prev => prev + 1);
-      setPostMessage({ text: 'Comment posted successfully', type: 'success' });
-      setTimeout(() => setPostMessage(null), 3000);
-    } catch (error: any) {
-      console.error(error);
-      setPostMessage({ text: 'Failed to post comment', type: 'error' });
-      setTimeout(() => setPostMessage(null), 4000);
-    } finally {
-      setIsPosting(false);
-    }
-  };
-
-  const handleAddWorkNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!workNote.trim() || !id || !user) return;
-    setIsPosting(true);
-    try {
-      // Post to API-backed activity timeline (internal/private work note)
-      const res = await fetch(`/api/tickets/${id}/activities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activity_type: 'work_note',
-          visibility_type: 'internal',
-          created_by: user.uid,
-          created_by_name: profile?.name || user.email,
-          message: workNote.trim(),
-          email_note: emailWorkNote
-        })
-      });
-      if (!res.ok) throw new Error('Failed to post work note');
-
-      // Update Firestore ticket metadata
-      try {
-        const now = new Date().toISOString();
-        const updates: any = { updatedAt: serverTimestamp(), history: [...(ticket.history || []), { action: "Work Note Added", timestamp: now, user: profile?.name || user.email }] };
-        if (!ticket.firstResponseAt) {
-          updates.firstResponseAt = now;
-          updates.responseSlaStatus = "Completed";
-          // START Resolution SLA from this moment
-          updates.resolutionSlaStatus = "In Progress";
-          const resHours = ticket.slaResolutionHours || 24;
-          updates.resolutionDeadline = calculateSLADeadline(new Date(now), resHours, {
-            businessHours: ticket.businessHours,
-            excludeWeekends: ticket.excludeWeekends,
-            excludeHolidays: ticket.excludeHolidays
-          }).toISOString();
-          updates.resolutionSlaStartTime = now;
-        }
-        await updateDoc(doc(db, "tickets", id), updates);
-      } catch (e) { /* Firestore update non-critical */ }
-
-      setWorkNote("");
-      setEmailWorkNote(false);
-      setTimelineRefresh(prev => prev + 1);
-      setPostMessage({ text: 'Work note added successfully', type: 'success' });
-      setTimeout(() => setPostMessage(null), 3000);
-    } catch (error: any) {
-      console.error(error);
-      setPostMessage({ text: 'Failed to add work note', type: 'error' });
-      setTimeout(() => setPostMessage(null), 4000);
-    } finally {
-      setIsPosting(false);
-    }
-  };
-
-  const updateLocalField = (field: string, value: string) => {
-    setEditedTicket((prev: any) => ({ ...prev, [field]: value }));
-  };
-
-  // Timer functions — AI-Enhanced
-  const handleStartTimer = async () => {
-    setAiProcessing(true);
-    setAiStatusMessage("🚀 Starting AI Work Session...");
-    setSelectedIncident(ticket.number);
-    try {
-      await startWatcher();
-
-      // Post "AI Work Session Started" to timeline
-      await fetch(`/api/tickets/${id}/activities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activity_type: 'system',
-          visibility_type: 'internal',
-          created_by: user.uid,
-          created_by_name: profile?.name || user.email,
-          message: 'AI Work Session Started'
-        })
-      });
-      setTimelineRefresh(prev => prev + 1);
-      
-      setAiStatusMessage("✅ Session active!");
-      setTimeout(() => setAiStatusMessage(""), 3000);
-    } catch (error) {
-      console.error("[AI WorkSession] Start analysis failed:", error);
-      setAiStatusMessage("⚠️ Failed to start session");
-      setTimeout(() => setAiStatusMessage(""), 3000);
-    } finally {
-      setAiProcessing(false);
-    }
-  };
-
-  const handleStopTimer = async () => {
-    setAiProcessing(true);
-    setAiStatusMessage("🛑 Stopping AI session...");
-    try {
-      const now = new Date();
-      const startMs = Date.now() - (trackerElapsed * 1000);
-      const start = new Date(startMs);
-      const calculatedMinutes = Math.max(1, Math.round(trackerElapsed / 60));
-
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const formatTimeForInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      const formatDateForInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-      const initialStart = formatTimeForInput(start);
-      const initialEnd = formatTimeForInput(now);
-      const initialDate = formatDateForInput(now);
-
-      await stopWatcher();
-
-      setSessionForm({
-        entryDate: initialDate,
-        startTime: initialStart,
-        endTime: initialEnd,
-        minutesWorked: calculatedMinutes,
-        task: "Ticket Resolution",
-        customTask: "",
-        workType: "Support",
-        shortDescription: trackerSummary ? trackerSummary.substring(0, 100) : "",
-        description: trackerSummary || "",
-        notes: "",
-        billable: "Billable"
-      });
-
-      // Post "AI Work Session Completed" to timeline
-      await fetch(`/api/tickets/${id}/activities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activity_type: 'system',
-          visibility_type: 'internal',
-          created_by: user.uid,
-          created_by_name: profile?.name || user.email,
-          message: `AI Work Session Completed. Duration: ${Math.floor(trackerElapsed / 60)}m ${trackerElapsed % 60}s`
-        })
-      });
-      setTimelineRefresh(prev => prev + 1);
-      
-      setAiStatusMessage("✅ Session completed!");
-      setTimeout(() => setAiStatusMessage(""), 3000);
-      
-      setShowSessionPopup(true);
-    } catch (error) {
-      console.error("[AI WorkSession] Stop analysis failed:", error);
-      setAiStatusMessage("⚠️ Failed to stop properly");
-      setTimeout(() => setAiStatusMessage(""), 3000);
-    } finally {
-      setAiProcessing(false);
-    }
-  };
-
-  const handleSaveSession = async () => {
-    if (!user) return;
-    if (!sessionForm.shortDescription.trim()) {
-      alert("Short Description is required.");
-      return;
-    }
-
-    setSavingSession(true);
-    try {
-      const userId = user.uid;
-      const finalTask = sessionForm.task === "Other..." ? sessionForm.customTask : sessionForm.task;
-      const finalShortDesc = ticket?.number 
-        ? `[${ticket.number}] ${sessionForm.shortDescription}`
-        : sessionForm.shortDescription;
-
-      const entryD = new Date(sessionForm.entryDate + "T12:00:00");
-      const day = entryD.getDay();
-      const diff = entryD.getDate() - day + (day === 0 ? -6 : 1);
-      const mon = new Date(entryD);
-      mon.setDate(diff);
-      const monStr = mon.toISOString().split("T")[0];
-      const sun = new Date(mon.getTime() + 6 * 86400000);
-      const sunStr = sun.toISOString().split("T")[0];
-
-      const tsRes = await fetch("/api/timesheets/get-or-create", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          week_start: monStr,
-          week_end: sunStr
-        })
-      });
-      const ts = await tsRes.json();
-
-      const response = await fetch("/api/time-cards", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timesheet_id: ts.id,
-          user_id: userId,
-          entry_date: sessionForm.entryDate,
-          start_time: sessionForm.startTime,
-          end_time: sessionForm.endTime,
-          hours_worked: sessionForm.minutesWorked,
-          task: finalTask,
-          work_type: sessionForm.workType,
-          billable: sessionForm.billable,
-          description: sessionForm.description,
-          short_description: finalShortDesc,
-          notes: sessionForm.notes,
-          status: 'Draft',
-          ticket_number: ticket?.number || null,
-          ticket_id: id,
-          is_system_generated: 1
-        })
-      });
-
-      if (response.ok) {
-        setPostMessage({ text: "Session activity details saved successfully! Calendar entry created.", type: 'success' });
-        setTimeout(() => setPostMessage(null), 3000);
-        setShowSessionPopup(false);
-      } else {
-        alert("Failed to save activity details.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Error saving session details.");
-    } finally {
-      setSavingSession(false);
-    }
-  };
-
-  const formatDate = (date: any) => {
-    if (!date) return "-";
-    try {
-      if (typeof date.toDate === "function") {
-        const d = date.toDate();
-        return isNaN(d.getTime()) ? "-" : d.toLocaleString();
-      }
-      if (typeof date === "string") {
-        const d = new Date(date);
-        return isNaN(d.getTime()) ? "-" : d.toLocaleString();
-      }
-      if (date.seconds !== undefined) {
-        const d = new Date(Number(date.seconds) * 1000);
-        return isNaN(d.getTime()) ? "-" : d.toLocaleString();
-      }
-    } catch (e) {
-      return "-";
-    }
-    return "-";
-  };
-
-  const [activeTab, setActiveTab] = useState("Notes");
-  const [localPendingType, setLocalPendingType] = useState<SlaDelayResponseType>(null);
-
-  const effectiveSlaDelay = ticket ? getEffectiveSlaDelayState(ticket) : null;
-  const isTicketOwner = !!(ticket && user && (ticket.assignedTo === user.uid || ticket.assignedTo === user.email || ticket.assignedToName === profile?.name));
-  const pendingSlaDelayType: SlaDelayResponseType = !effectiveSlaDelay || !isTicketOwner
-    ? null
-    : effectiveSlaDelay.awaitingRca
-      ? "rca"
-      : effectiveSlaDelay.followUpDue || effectiveSlaDelay.meta.pendingResponseType === "follow_up"
-        ? "follow_up"
-        : effectiveSlaDelay.awaitingInitialJustification || effectiveSlaDelay.meta.pendingResponseType === "initial"
-          ? "initial"
-          : null;
-
-  const activePendingType = localPendingType || pendingSlaDelayType;
-
-  useEffect(() => {
-    if (!effectiveSlaDelay) return;
-    setSlaDelayForm((prev) => ({
-      delayReason: effectiveSlaDelay.meta.latestDelayReason || prev.delayReason,
-      progressUpdate: effectiveSlaDelay.meta.latestProgressUpdate || prev.progressUpdate,
-      blockers: effectiveSlaDelay.meta.latestBlockers || prev.blockers,
-      eta: effectiveSlaDelay.meta.latestEta || prev.eta,
-      nextActionPlan: effectiveSlaDelay.meta.nextActionPlan || prev.nextActionPlan,
-      resolutionPercentage: effectiveSlaDelay.meta.resolutionPercentage ? String(effectiveSlaDelay.meta.resolutionPercentage) : prev.resolutionPercentage,
-      rootCauseAnalysis: effectiveSlaDelay.meta.rootCauseAnalysis || prev.rootCauseAnalysis,
-      correctiveActionDetails: effectiveSlaDelay.meta.correctiveActionDetails || prev.correctiveActionDetails,
-      finalResolutionExplanation: effectiveSlaDelay.meta.finalResolutionExplanation || prev.finalResolutionExplanation,
-      dependencyDetails: effectiveSlaDelay.meta.dependencyDetails || prev.dependencyDetails,
-      preventiveAction: effectiveSlaDelay.meta.preventiveAction || prev.preventiveAction,
-    }));
-  }, [effectiveSlaDelay?.meta.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const updateSlaDelayField = (field: string, value: string) => {
-    setSlaDelayForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleSubmitSlaDelay = async () => {
-    if (!ticket || !id || !user || !activePendingType || !effectiveSlaDelay) return;
-
-    const requiredMissing =
-      (activePendingType === "initial" && (!slaDelayForm.delayReason.trim() || !slaDelayForm.progressUpdate.trim() || !slaDelayForm.eta || !slaDelayForm.nextActionPlan.trim())) ||
-      (activePendingType === "follow_up" && (!slaDelayForm.progressUpdate.trim() || !slaDelayForm.eta || slaDelayForm.resolutionPercentage === "")) ||
-      (activePendingType === "rca" && (!slaDelayForm.rootCauseAnalysis.trim() || !slaDelayForm.dependencyDetails.trim() || !slaDelayForm.correctiveActionDetails.trim() || !slaDelayForm.preventiveAction.trim() || !slaDelayForm.finalResolutionExplanation.trim() || !slaDelayForm.eta || slaDelayForm.resolutionPercentage === ""));
-
-    if (requiredMissing) {
-      alert("Please complete all mandatory SLA accountability fields before continuing.");
-      return;
-    }
-
-    setSlaDelaySaving(true);
-    try {
-      const nowIso = new Date().toISOString();
-      const baseMeta: SlaDelayMeta = effectiveSlaDelay.meta.triggeredAt
-        ? effectiveSlaDelay.meta
-        : createDefaultSlaDelayMeta(nowIso, effectiveSlaDelay.usage);
-
-      const responseType = activePendingType;
-      const nextLogs: SlaDelayLogEntry[] = [...effectiveSlaDelay.logs, {
-        id: `submit-${Date.now()}`,
-        type: responseType === "initial" ? "justification_submitted" : responseType === "follow_up" ? "follow_up_submitted" : "rca_submitted",
-        timestamp: nowIso,
-        actorId: user.uid,
-        actorName: profile?.name || user.email || "User",
-        message:
-          responseType === "initial"
-            ? "Delay justification submitted by the ticket owner."
-            : responseType === "follow_up"
-              ? "SLA follow-up progress update submitted by the ticket owner."
-              : "SLA breach RCA and corrective action submitted by the ticket owner.",
-        data: {
-          delayReason: slaDelayForm.delayReason,
-          progressUpdate: slaDelayForm.progressUpdate,
-          blockers: slaDelayForm.blockers,
-          eta: slaDelayForm.eta,
-          nextActionPlan: slaDelayForm.nextActionPlan,
-          resolutionPercentage: Number(slaDelayForm.resolutionPercentage || 0),
-          rootCauseAnalysis: slaDelayForm.rootCauseAnalysis,
-          dependencyDetails: slaDelayForm.dependencyDetails,
-          correctiveActionDetails: slaDelayForm.correctiveActionDetails,
-          preventiveAction: slaDelayForm.preventiveAction,
-          finalResolutionExplanation: slaDelayForm.finalResolutionExplanation,
-        }
-      }];
-
-      const nextMeta: SlaDelayMeta = {
-        ...baseMeta,
-        active: !["Resolved", "Closed", "Canceled"].includes(ticket.status),
-        monitoredSla: effectiveSlaDelay.usage.slaType || baseMeta.monitoredSla,
-        monitoredPercentage: Math.round(effectiveSlaDelay.usage.percentageUsed * 100) / 100,
-        lastSubmittedAt: nowIso,
-        lastRequestedAt: nowIso,
-        awaitingOwnerResponse: false,
-        pendingResponseType: null,
-        nextFollowUpAt: responseType === "rca" ? null : new Date(Date.now() + baseMeta.followUpIntervalMinutes * 60 * 1000).toISOString(),
-        latestDelayReason: slaDelayForm.delayReason.trim() || baseMeta.latestDelayReason,
-        latestProgressUpdate: slaDelayForm.progressUpdate.trim() || baseMeta.latestProgressUpdate,
-        latestBlockers: slaDelayForm.blockers.trim(),
-        latestEta: slaDelayForm.eta,
-        nextActionPlan: slaDelayForm.nextActionPlan.trim() || baseMeta.nextActionPlan,
-        resolutionPercentage: Number(slaDelayForm.resolutionPercentage || baseMeta.resolutionPercentage || 0),
-        rootCauseAnalysis: slaDelayForm.rootCauseAnalysis.trim() || baseMeta.rootCauseAnalysis,
-        correctiveActionDetails: slaDelayForm.correctiveActionDetails.trim() || baseMeta.correctiveActionDetails,
-        finalResolutionExplanation: slaDelayForm.finalResolutionExplanation.trim() || baseMeta.finalResolutionExplanation,
-        dependencyDetails: slaDelayForm.dependencyDetails.trim() || baseMeta.dependencyDetails,
-        preventiveAction: slaDelayForm.preventiveAction.trim() || baseMeta.preventiveAction,
-        ...(responseType === "rca" ? {
-          breachReasonSubmittedBy: profile?.name || user.email || "Unknown",
-          breachReasonSubmittedAt: nowIso,
-        } : {}),
-        rcaRequired: responseType === "rca" ? false : baseMeta.rcaRequired,
-        correctiveActionRequired: responseType === "rca" ? false : baseMeta.correctiveActionRequired,
-        latestStatus: "submitted",
-        updatedAt: nowIso,
-      };
-
-      await updateDoc(doc(db, "tickets", id), {
-        slaDelayMeta: nextMeta,
-        slaDelayLogs: nextLogs,
-        updatedAt: serverTimestamp(),
-        ...(responseType === "rca" ? {
-          resolutionNotes: editedTicket?.resolutionNotes || nextMeta.finalResolutionExplanation,
-        } : {})
-      });
-
-      await fetch(`/api/tickets/${id}/activities`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          activity_type: responseType === "rca" ? "sla_rca" : "sla_follow_up",
-          visibility_type: "internal",
-          created_by: user.uid,
-          created_by_name: profile?.name || user.email,
-          message:
-            responseType === "initial"
-              ? `Delay justification submitted. ETA updated to ${slaDelayForm.eta}.`
-              : responseType === "follow_up"
-                ? `SLA follow-up submitted. Resolution progress is ${slaDelayForm.resolutionPercentage || 0}%.`
-                : "SLA breach RCA and corrective action submitted.",
-          metadata_json: {
-            responseType,
-            slaDelayMeta: nextMeta,
-          }
-        })
-      });
-
-      // Notify managers when RCA is submitted
-      if (responseType === "rca") {
-        try {
-          fetch("/api/notifications/dispatch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ticket: { id, ticket_number: ticket.number, assigned_to: ticket.assignedTo, assigned_to_name: ticket.assignedToName, status: ticket.status, priority: ticket.priority },
-              actorId: user.uid,
-              actorName: profile?.name || user.email,
-              type: "sla_breach_rca",
-              message: `SLA Breach RCA submitted for ticket ${ticket.number} by ${profile?.name || user.email}.`,
-            })
-          });
-        } catch (e) { /* non-critical */ }
-      }
-
-      setTimelineRefresh((prev) => prev + 1);
-      setLocalPendingType(null);
-    } catch (error: any) {
-      console.error("Failed to submit SLA delay update:", error);
-      alert(`Failed to submit SLA accountability update: ${error.message || "Unknown error"}`);
-    } finally {
-      setSlaDelaySaving(false);
-    }
-  };
-
-  if (!ticket) return null;
-
-  const createdTime = ticket.createdAt?.seconds 
-    ? new Date(ticket.createdAt.seconds * 1000) 
-    : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
-
-  const fallbackResponseDeadline = ticket.responseDeadline || 
-    (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
-      businessHours: ticket.businessHours,
-      excludeWeekends: ticket.excludeWeekends,
-      excludeHolidays: ticket.excludeHolidays
-    }).toISOString() : undefined);
-
-  const fallbackResolutionDeadline = ticket.resolutionDeadline || 
-    (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
-      businessHours: ticket.businessHours,
-      excludeWeekends: ticket.excludeWeekends,
-      excludeHolidays: ticket.excludeHolidays
-    }).toISOString() : undefined);
-
-  const getAiBreachRisk = () => {
-    if (!ticket || ticket.status === "Resolved" || ticket.status === "Closed") return null;
-
-    const deadlineStr = ticket.resolutionDeadline;
-    if (!deadlineStr) return null;
-
-    const deadline = new Date(deadlineStr).getTime();
-    const now = Date.now();
-    const createdTimeMs = ticket.createdAt?.seconds 
-      ? ticket.createdAt.seconds * 1000 
-      : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
-
-    if (now >= deadline) return { risk: "breached", score: 100, label: "Breached" };
-
-    const totalTime = deadline - createdTimeMs;
-    const timeElapsed = now - createdTimeMs;
-    const ratio = totalTime > 0 ? timeElapsed / totalTime : 0;
-
-    const workloadFactor = ticket.assignedTo ? 1.1 : 1.25;
-
-    const categoryMultipliers: Record<string, number> = {
-      "Network": 1.2,
-      "Database": 1.15,
-      "Software": 1.1,
-      "Hardware": 1.05
-    };
-    const catMultiplier = categoryMultipliers[ticket.category || ""] || 1.0;
-
-    const rawScore = ratio * 100 * workloadFactor * catMultiplier;
-    const score = Math.min(99, Math.round(rawScore));
-
-    if (score > 80) return { risk: "high", score, label: "High Risk (AI Predicted)" };
-    if (score > 55) return { risk: "medium", score, label: "Medium Risk (AI Predicted)" };
-    return { risk: "low", score, label: "Low Risk" };
-  };
-
-  const breachRisk = getAiBreachRisk();
-
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between bg-white p-3 border border-border rounded-lg shadow-sm">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/tickets")} className="gap-2 h-8 px-2">
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <div className="flex flex-col">
-            <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider leading-none mb-1">Incident</span>
-            <span className="text-sm font-bold leading-none">{ticket.number}</span>
-          </div>
-          {ticket.points > 0 && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-yellow-400/10 text-yellow-600 border border-yellow-400/20 rounded-full text-[10px] font-black uppercase tracking-widest animate-pulse">
-              <Star className="w-3 h-3 fill-current" />
-              {ticket.points} Points Earned
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4 border-r border-border pr-6 hidden md:flex">
-            <SLATimer
-              label="Resp SLA"
-              deadline={fallbackResponseDeadline}
-              startTime={ticket.responseSlaStartTime || ticket.createdAt}
-              metAt={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !== "New" ? new Date().toISOString() : undefined)}
-              isPaused={editedTicket?.status === "On Hold" || editedTicket?.status === "Waiting for Customer" || editedTicket?.status === "Awaiting User" || editedTicket?.status === "Awaiting Vendor"}
-              onHoldStart={ticket.onHoldStart}
-              totalPausedTime={ticket.totalPausedTime}
-            />
-            <SLATimer
-              label="Res SLA"
-              deadline={fallbackResolutionDeadline}
-              startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
-              metAt={ticket.resolvedAt || (editedTicket?.status === "Resolved" || editedTicket?.status === "Closed" ? new Date().toISOString() : undefined)}
-              isPaused={editedTicket?.status === "On Hold" || editedTicket?.status === "Waiting for Customer" || editedTicket?.status === "Awaiting User" || editedTicket?.status === "Awaiting Vendor"}
-              onHoldStart={ticket.onHoldStart}
-              totalPausedTime={ticket.totalPausedTime}
-              waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !== "New" ? new Date().toISOString() : null)}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            {/* AI Breach Risk Predictor Badge */}
-            {breachRisk && (
-              <div className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all duration-300",
-                breachRisk.risk === "high" 
-                  ? "bg-red-500/10 text-red-500 border-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.2)] animate-pulse"
-                  : breachRisk.risk === "medium"
-                    ? "bg-amber-500/10 text-amber-500 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
-                    : "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
-              )}>
-                <ShieldAlert className="w-3.5 h-3.5 animate-bounce" />
-                <span>{breachRisk.score}% Breach Risk ({breachRisk.label})</span>
-              </div>
-            )}
-            
-            {/* AI Status Message */}
-            {aiStatusMessage && (
-              <div className="mr-4 flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
-                <div className="w-2 h-2 bg-sn-green rounded-full animate-ping" />
-                <span className="text-[10px] font-bold text-sn-green uppercase tracking-wider">{aiStatusMessage}</span>
-              </div>
-            )}
-
-            {/* Timer Display */}
-            {isActiveSession && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg shadow-sm">
-                <div className="relative">
-                  <Clock className="w-4 h-4 text-red-600" />
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-600 rounded-full animate-ping" />
-                </div>
-                <span className="font-mono text-sm font-bold text-red-700">
-                  {Math.floor(trackerElapsed / 3600).toString().padStart(2, '0')}:
-                  {Math.floor((trackerElapsed % 3600) / 60).toString().padStart(2, '0')}:
-                  {(trackerElapsed % 60).toString().padStart(2, '0')}
-                </span>
-              </div>
-            )}
-
-            {/* Timer Buttons */}
-            {!isActiveSession ? (
-              <Button
-                size="sm"
-                onClick={handleStartTimer}
-                disabled={aiProcessing}
-                className={cn(
-                  "h-8 px-4 font-bold text-white shadow-md transition-all duration-300",
-                  aiProcessing ? "bg-gray-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700 hover:shadow-green-200 active:scale-95"
-                )}
-              >
-                {aiProcessing ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
-                ) : (
-                  <Play className="w-3 h-3 mr-1.5 fill-current" />
-                )}
-                {aiProcessing ? "Capturing..." : "Start Work Session"}
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={handleStopTimer}
-                disabled={aiProcessing}
-                className={cn(
-                  "h-8 px-4 font-bold text-white shadow-md transition-all duration-300",
-                  aiProcessing ? "bg-gray-400 cursor-not-allowed" : "bg-red-600 hover:bg-red-700 hover:shadow-red-200 active:scale-95"
-                )}
-              >
-                {aiProcessing ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
-                ) : (
-                  <Square className="w-3 h-3 mr-1.5 fill-current" />
-                )}
-                {aiProcessing ? "Analyzing..." : "Stop Work Session"}
-              </Button>
-            )}
-
-
-
-            <Button variant="outline" size="sm" onClick={handleUpdate} disabled={isUpdating} className="h-8 px-4 font-bold border-border bg-white text-sn-dark">Update</Button>
-            <Button size="sm" onClick={handleUpdate} disabled={isUpdating} className="h-8 px-4 font-bold bg-sn-green text-sn-dark shadow-sm hover:bg-sn-green/90 transition-all hover:shadow-sn-green/20">Submit</Button>
-          </div>
-        </div>
-      </div>
-
-      {/* SLA Breach RCA Banner */}
-      {(effectiveSlaDelay?.usage.breached || effectiveSlaDelay?.meta.latestStatus === "breached") && !(effectiveSlaDelay?.meta.breachReasonSubmittedAt || effectiveSlaDelay?.meta.rootCauseAnalysis?.trim()) && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between shadow-sm animate-pulse">
-          <div className="flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5 text-red-600" />
-            <div>
-              <p className="text-xs font-bold text-red-800">SLA Breach RCA Required</p>
-              <p className="text-[11px] text-red-600">This ticket has breached its SLA. As the ticket owner, you must submit a Root Cause Analysis before resolving or closing it.</p>
-            </div>
-          </div>
-          {isTicketOwner && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLocalPendingType("rca")}
-              className="border-red-200 hover:bg-red-50 text-red-700 font-semibold text-[11px] h-8"
-            >
-              Provide RCA
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Main Form Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-        <div className="bg-white border border-border rounded-lg shadow-sm p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
-            <div className="space-y-4">
-              {/* Number */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Number</label>
-                <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-mono h-8" value={ticket.number} />
-              </div>
-
-              {/* Reporting User */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Reporting User</label>
-                <div className="col-span-2 flex gap-1">
-                  <input readOnly className="flex-grow p-1.5 bg-muted/30 border border-border rounded text-xs h-8" value={ticket.caller || ''} />
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0"><Search className="w-3 h-3" /></Button>
-                </div>
-              </div>
-
-              {/* Affected User */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Affected User</label>
-                <div className="col-span-2 flex gap-1">
-                  <input
-                    readOnly={!canEdit}
-                    value={editedTicket?.affectedUser || ""}
-                    onChange={(e) => updateLocalField("affectedUser", e.target.value)}
-                    className={cn(
-                      "flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
-                      canEdit ? "bg-white" : "bg-muted/30"
-                    )}
-                  />
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
-                </div>
-              </div>
-
-              {/* Watch list */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Watch list</label>
-                <div className="col-span-2 flex gap-1">
-                  <input
-                    readOnly={!canEdit}
-                    value={editedTicket?.watchList || ""}
-                    onChange={(e) => updateLocalField("watchList", e.target.value)}
-                    placeholder="Separate emails with commas"
-                    className={cn(
-                      "flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
-                      canEdit ? "bg-white" : "bg-muted/30"
-                    )}
-                  />
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Users className="w-3 h-3" /></Button>
-                </div>
-              </div>
-
-              {/* Business Phone */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Business phone</label>
-                <input
-                  readOnly={!canEdit}
-                  value={editedTicket?.businessPhone || ""}
-                  onChange={(e) => updateLocalField("businessPhone", e.target.value)}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                />
-              </div>
-
-              {/* Location */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Location</label>
-                <div className="col-span-2 flex gap-1">
-                  <input
-                    readOnly={!canEdit}
-                    value={editedTicket?.location || ""}
-                    onChange={(e) => updateLocalField("location", e.target.value)}
-                    className={cn(
-                      "flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
-                      canEdit ? "bg-white" : "bg-muted/30"
-                    )}
-                  />
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
-                </div>
-              </div>
-
-              {/* Category */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Category</label>
-                <select
-                  disabled={!canEdit}
-                  value={editedTicket?.categoryId || ""}
-                  onChange={(e) => {
-                    const category = visibleCategories.find((item) => item.id === e.target.value);
-                    setEditedTicket((prev: any) => ({ ...prev, categoryId: e.target.value, category: category?.name || "", subcategoryId: "", subcategory: "", serviceId: "", service: "", serviceProvider: "", assignmentGroup: "" }));
-                  }}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                >
-                  {visibleCategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </div>
-
-              {/* Subcategory */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Subcategory</label>
-                <select
-                  disabled={!canEdit || !editedTicket?.categoryId}
-                  value={editedTicket?.subcategoryId || ""}
-                  onChange={(e) => {
-                    const subcategory = visibleSubcategories.find((item) => item.id === e.target.value);
-                    setEditedTicket((prev: any) => ({ ...prev, subcategoryId: e.target.value, subcategory: subcategory?.name || "", serviceId: "", service: "", serviceProvider: "", assignmentGroup: "" }));
-                  }}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors disabled:opacity-50 disabled:bg-muted bg-white",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                >
-                  <option value="">-- Select Subcategory --</option>
-                  {visibleSubcategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </div>
-
-              {/* Service */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Service</label>
-                <select
-                  disabled={!canEdit || !editedTicket?.subcategoryId}
-                  value={editedTicket?.serviceId || ""}
-                  onChange={(e) => {
-                    const provider = visibleProviders.find((item) => item.id === e.target.value);
-                    setEditedTicket((prev: any) => ({ ...prev, serviceId: e.target.value, service: provider?.name || "", serviceProvider: provider?.name || "", assignmentGroup: "" }));
-                  }}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors disabled:opacity-50 disabled:bg-muted bg-white",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                >
-                  <option value="">-- Select Service --</option>
-                  {visibleProviders.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </div>
-
-              {/* Incident Category Dynamic Custom Dropdowns */}
-              {(["admin", "super_admin", "ultra_super_admin"].includes(profile?.role || "") ||
-                ["arun.g@technosprint.net", "swedhasris@gmail.com", "ulter@technosprint.net", "admin@technosprint.net", "admin@connectit.local", "demo-admin@connectit.local", "demo-super_admin@connectit.local", "demo-ultra_super_admin@connectit.local"].includes(user?.email || profile?.email || "")) && (
-                  <>
-                    {dynamicFields.map((field) => {
-                      const fieldOptions = dynamicOptions[field.id] || [];
-                      return (
-                        <div key={field.id} className="grid grid-cols-3 items-center gap-4">
-                          <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
-                            <span className="text-red-500 font-bold">*</span> {field.name}
-                          </label>
-                          <select
-                            value={editedTicket?.customFields?.[field.id] || ""}
-                            onChange={e => {
-                              setEditedTicket((prev: any) => ({
-                                ...prev,
-                                customFields: {
-                                  ...(prev?.customFields || {}),
-                                  [field.id]: e.target.value
-                                }
-                              }));
-                            }}
-                            className="col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white"
-                            required
-                          >
-                            <option value="">Select {field.name}</option>
-                            {fieldOptions.map((opt: any) => (
-                              <option key={opt.id} value={opt.value_text}>{opt.value_text}</option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    })}
-                    {dynamicFields.length === 0 && (
-                      <div className="grid grid-cols-3 items-center gap-4">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
-                          Incident Category
-                        </label>
-                        <select
-                          disabled
-                          className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 bg-muted/20"
-                        >
-                          <option>No dynamic custom categories defined</option>
-                        </select>
-                      </div>
-                    )}
-                  </>
-                )}
-
-              {/* Configuration Item */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Configuration item</label>
-                <div className="col-span-2 flex gap-1">
-                  <input
-                    readOnly={!canEdit}
-                    value={editedTicket?.configurationItem || ""}
-                    onChange={(e) => updateLocalField("configurationItem", e.target.value)}
-                    className={cn(
-                      "flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
-                      canEdit ? "bg-white" : "bg-muted/30"
-                    )}
-                  />
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
-                </div>
-              </div>
-
-              {/* Computer Name */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Computer Name</label>
-                <div className="col-span-2 flex gap-1">
-                  <input
-                    readOnly={!canEdit}
-                    value={editedTicket?.computerName || ""}
-                    onChange={(e) => updateLocalField("computerName", e.target.value)}
-                    className={cn(
-                      "flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
-                      canEdit ? "bg-white" : "bg-muted/30"
-                    )}
-                  />
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
-                </div>
-              </div>
-
-              {/* Impact */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Impact</label>
-                <select
-                  disabled={!canEdit}
-                  value={editedTicket?.impact || ""}
-                  onChange={(e) => updateLocalField("impact", e.target.value)}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green transition-colors",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                >
-                  <option>1 - High</option>
-                  <option>2 - Medium</option>
-                  <option>3 - Low</option>
-                </select>
-              </div>
-
-              {/* Urgency */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Urgency</label>
-                <select
-                  disabled={!canEdit}
-                  value={editedTicket?.urgency || ""}
-                  onChange={(e) => updateLocalField("urgency", e.target.value)}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green transition-colors",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                >
-                  <option>1 - High</option>
-                  <option>2 - Medium</option>
-                  <option>3 - Low</option>
-                </select>
-              </div>
-
-              {/* Priority */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Priority</label>
-                <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-bold text-blue-600 h-8" value={editedTicket?.priority || ""} />
-              </div>
-
-              {/* Knowledge Article Used */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Knowledge Article Used?</label>
-                <input
-                  disabled={!canEdit}
-                  type="checkbox"
-                  checked={editedTicket?.knowledgeArticleUsed || false}
-                  onChange={(e) => updateLocalField("knowledgeArticleUsed", e.target.checked as any)}
-                  className="w-4 h-4 accent-sn-green"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* Opened */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened</label>
-                <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8" value={formatDate(ticket.createdAt)} />
-              </div>
-
-              {/* Opened by */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened by</label>
-                <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8" value={ticket.createdByName || ticket.createdByEmail || ticket.createdBy || '-'} />
-              </div>
-
-              {/* State */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">State</label>
-                <select disabled={!canEdit} value={editedTicket?.status || ""} onChange={(e) => updateLocalField("status", e.target.value)} className={cn("col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors", canEdit ? "bg-white" : "bg-muted/30")}>
-                  {["New", "In Progress", "On Hold", "Awaiting User", "Awaiting Vendor", "Resolved", "Closed", "Canceled"].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-
-              {/* Pause Reason Selector */}
-              {(["On Hold", "Awaiting User", "Awaiting Vendor"].includes(editedTicket?.status || "") || ticket?.onHoldReason) && (
-                <div className="grid grid-cols-3 items-center gap-4 animate-in fade-in duration-200">
-                  <label className="text-[11px] text-right font-semibold text-amber-500 uppercase leading-tight flex items-center justify-end gap-1">
-                    <span className="text-amber-500">*</span> Pause Reason
-                  </label>
-                  <select
-                    disabled={!canEdit}
-                    value={editedTicket?.onHoldReason || ticket?.onHoldReason || ""}
-                    onChange={(e) => updateLocalField("onHoldReason", e.target.value)}
-                    className={cn(
-                      "col-span-2 p-1.5 border rounded text-xs outline-none h-8 transition-colors",
-                      canEdit
-                        ? "bg-amber-50/10 dark:bg-amber-950/10 border-amber-500/30 text-amber-600 dark:text-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                        : "bg-muted/30 border-border text-amber-600 dark:text-amber-400"
-                    )}
-                  >
-                    <option value="" className="text-muted-foreground">-- Select Pause Reason --</option>
-                    <option value="Awaiting Customer Action">Awaiting Customer Action</option>
-                    <option value="Awaiting 3rd Party Vendor">Awaiting 3rd Party Vendor</option>
-                    <option value="Awaiting Internal Approval">Awaiting Internal Approval</option>
-                    <option value="Awaiting Hardware/Software Delivery">Awaiting Hardware/Software Delivery</option>
-                    <option value="Other / Pending Inquiry">Other / Pending Inquiry</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Assignment group */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assignment group</label>
-                <div className="col-span-2 flex gap-1">
-                  <select disabled={!canEdit} className={cn("flex-grow p-1.5 border border-border rounded text-xs outline-none h-8 focus:ring-1 focus:ring-sn-green", canEdit ? "bg-white" : "bg-muted/30")} value={editedTicket?.assignmentGroup || ""} onChange={(e) => updateLocalField("assignmentGroup", e.target.value)}>
-                    <option value="">-- None --</option>
-                    {editedTicket?.assignmentGroup && !visibleGroups.some(g => g.name === editedTicket.assignmentGroup) && (
-                      <option value={editedTicket.assignmentGroup}>{editedTicket.assignmentGroup}</option>
-                    )}
-                    {(visibleGroups.length > 0 ? visibleGroups : groups.filter(g => g.status === 'active')).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-                  </select>
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
-                </div>
-              </div>
-
-              {/* Assigned to */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assigned to</label>
-                <div className="col-span-2 flex gap-1">
-                  <select disabled={!canEdit} className={cn("flex-grow p-1.5 border border-border rounded text-xs outline-none h-8 focus:ring-1 focus:ring-sn-green", canEdit ? "bg-white" : "bg-muted/30")} value={editedTicket?.assignedTo || ""} onChange={(e) => updateLocalField("assignedTo", e.target.value)}>
-                    <option value="">-- None --</option>
-                    {editedTicket?.assignedTo && !filteredAgents.some(a => a.id === editedTicket.assignedTo || a.uid === editedTicket.assignedTo) && (
-                      <option value={editedTicket.assignedTo}>{editedTicket.assignedToName || editedTicket.assignedTo} (Current)</option>
-                    )}
-                    {filteredAgents.map(agent => (
-                      <option key={agent.id} value={agent.uid || agent.id}>
-                        {agent.name || agent.email}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-2 bg-sn-green/10 text-sn-green border-sn-green/20 hover:bg-sn-green/20"
-                    title="Auto-Assign"
-                    disabled={!canEdit}
-                    onClick={() => {
-                      if (filteredAgents.length === 0) return;
-                      const leastLoaded = [...filteredAgents].sort((a, b) => (a.currentWorkload || 0) - (b.currentWorkload || 0))[0];
-                      updateLocalField("assignedTo", leastLoaded.uid || leastLoaded.id);
-                      updateLocalField("assignedToName", leastLoaded.name || leastLoaded.email);
-                    }}
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Original Assignment Group */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Original Assignment Group</label>
-                <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
-                  value={editedTicket?.originalAssignmentGroup || editedTicket?.assignmentGroup || ""}
-                />
-              </div>
-
-              {/* Acknowledged */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Acknowledged</label>
-                <input
-                  disabled={!canEdit}
-                  type="checkbox"
-                  checked={editedTicket?.acknowledged || false}
-                  onChange={(e) => updateLocalField("acknowledged", e.target.checked as any)}
-                  className="w-4 h-4 accent-sn-green"
-                />
-              </div>
-
-              {/* Channel */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Channel</label>
-                <select
-                  disabled={!canEdit}
-                  value={editedTicket?.channel || "Self-service"}
-                  onChange={(e) => updateLocalField("channel", e.target.value)}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                >
-                  <option>Self-service</option>
-                  <option>Email</option>
-                  <option>Phone</option>
-                  <option>Chat</option>
-                  <option>Portal</option>
-                </select>
-              </div>
-
-              {/* Password Reset? */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Password Reset?</label>
-                <select
-                  disabled={!canEdit}
-                  value={editedTicket?.passwordReset || "No"}
-                  onChange={(e) => updateLocalField("passwordReset", e.target.value)}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                >
-                  <option>No</option>
-                  <option>Yes</option>
-                </select>
-              </div>
-
-              {/* Rackspace Ticket No */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Rackspace Ticket No</label>
-                <input
-                  readOnly={!canEdit}
-                  value={editedTicket?.rackspaceTicketNo || ""}
-                  onChange={(e) => updateLocalField("rackspaceTicketNo", e.target.value)}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                />
-              </div>
-
-              {/* Additional Information */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Additional Information</label>
-                <input
-                  readOnly={!canEdit}
-                  value={editedTicket?.additionalInformation || ""}
-                  onChange={(e) => updateLocalField("additionalInformation", e.target.value)}
-                  className={cn(
-                    "col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
-                    canEdit ? "bg-white" : "bg-muted/30"
-                  )}
-                />
-              </div>
-
-              {/* SLA due */}
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">SLA due</label>
-                <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-mono h-8"
-                  value={formatDate(ticket.resolutionDeadline)}
-                />
-              </div>
-            </div>
-
-            <div className="col-span-1 md:col-span-2 mt-4 space-y-4">
-              <div className="grid grid-cols-6 items-center gap-4">
-                <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Short description</label>
-                <input readOnly={!canEdit} className={cn("col-span-5 p-1.5 border border-border rounded text-xs outline-none h-8", canEdit ? "bg-white" : "bg-muted/30")} value={editedTicket?.title || ""} onChange={(e) => updateLocalField("title", e.target.value)} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs Section */}
-      <div className="bg-white border border-border rounded-lg shadow-sm overflow-hidden mt-6">
-        {/* Tab Headers */}
-        <div className="flex bg-muted/30 border-b border-border">
-          {["Notes", "Related Records", "Resolution Information", "SLA Monitoring", "Work Sessions"].map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "px-6 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-r border-border h-full",
-                activeTab === tab
-                  ? "bg-white text-sn-dark border-b-white -mb-px"
-                  : "text-muted-foreground hover:bg-white/50"
-              )}
-            >
-              {tab}
-            </button>
-          ))}
-          <div className="flex-grow border-b border-border"></div>
-        </div>
-
-        {/* Tab Content */}
-        <div className="p-6">
-          {activeTab === "Work Sessions" ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700">Ticket Work Sessions</h3>
-                {isActiveSession && (
-                  <span className="flex items-center gap-2 text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full border border-green-200">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> Active Session
-                  </span>
-                )}
-              </div>
-
-              {isActiveSession && trackerEntries.length > 0 && (
-                <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 mb-6">
-                  <h4 className="text-xs font-bold text-blue-800 mb-3 uppercase tracking-wider">Current Session Activity</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {trackerEntries.map((entry, idx) => (
-                      <div key={idx} className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xl">{entry.appIcon}</span>
-                          <span className="text-xs font-bold text-slate-700 truncate">{entry.appName}</span>
-                          <span className="text-[10px] text-slate-400 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                        {entry.screenshotDataUrl && (
-                          <img src={entry.screenshotDataUrl} alt="Screenshot" className="w-full h-24 object-cover rounded mb-2 border border-slate-100" />
-                        )}
-                        <p className="text-[10px] text-slate-600 leading-tight line-clamp-3">{entry.description}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {pastSessions.length === 0 ? (
-                <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
-                  <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-slate-500">No work sessions recorded for this ticket.</p>
-                  <p className="text-xs text-slate-400 mt-1">Start a work session to track your time and capture AI context.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {pastSessions.map((session, idx) => (
-                    <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-slate-100 text-slate-600 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs">
-                            #{pastSessions.length - idx}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">{new Date(session.start_time).toLocaleString()}</p>
-                            <p className="text-xs text-slate-500">
-                              Logged by {session.user_name || "Agent"} • 
-                              <span className="font-mono ml-1 text-blue-600 font-semibold">
-                                {Math.floor(session.duration / 3600).toString().padStart(2, '0')}:
-                                {Math.floor((session.duration % 3600) / 60).toString().padStart(2, '0')}:
-                                {(session.duration % 60).toString().padStart(2, '0')}
-                              </span>
-                            </p>
-                          </div>
-                        </div>
-                        <span className={cn(
-                          "text-[10px] px-2 py-1 rounded-md font-bold uppercase tracking-wider",
-                          session.status === 'completed' ? "bg-slate-100 text-slate-600" : "bg-green-100 text-green-700"
-                        )}>
-                          {session.status}
-                        </span>
-                      </div>
-                      
-                      {session.status === 'completed' && (
-                        <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 mt-2">
-                          <p className="text-xs text-slate-600 font-medium mb-1 uppercase tracking-wider">AI Summary</p>
-                          <p className="text-sm text-slate-800 leading-relaxed italic">
-                            Activity captured successfully. Full AI summary details and screenshots are accessible in the Timesheet module.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : activeTab === "Notes" ? (
-            <div className="space-y-6">
-              {/* Toast Notification */}
-              {postMessage && (
-                <div className={cn(
-                  "flex items-center gap-2 p-3 rounded-lg text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-300",
-                  postMessage.type === 'success' ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"
-                )}>
-                  {postMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                  {postMessage.text}
-                </div>
-              )}
-
-              {/* Dual-Note Input Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Work Notes (Internal/Private) */}
-                <div className="rounded-lg border-2 border-amber-200 bg-gradient-to-br from-amber-50/80 to-yellow-50/30 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-amber-100/60 border-b border-amber-200 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Lock className="w-3.5 h-3.5 text-amber-600" />
-                      <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Work Notes</span>
-                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-800 font-bold uppercase">Internal Only</span>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <textarea
-                      value={workNote}
-                      onChange={(e) => setWorkNote(e.target.value)}
-                      placeholder="Type internal work notes here... (visible only to agents)"
-                      className="w-full p-3 border border-amber-200 rounded-md text-xs outline-none focus:ring-2 focus:ring-amber-300 min-h-[120px] resize-none bg-white/80 placeholder:text-amber-400"
-                    />
-                    <div className="flex items-center justify-between mt-3">
-                      <div className="flex items-center gap-4">
-                        <span className="text-[9px] text-amber-600 font-medium flex items-center gap-1">
-                          <Lock className="w-3 h-3" /> Not visible to customer
-                        </span>
-                        <label className="flex items-center gap-1.5 text-[10px] text-amber-700 font-semibold cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={emailWorkNote}
-                            onChange={(e) => setEmailWorkNote(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500 accent-amber-500"
-                          />
-                          Email Note
-                        </label>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={!workNote.trim() || isPosting}
-                        onClick={(e) => handleAddWorkNote(e)}
-                        className="bg-amber-500 hover:bg-amber-600 text-white font-bold gap-1.5 h-8 px-4 shadow-sm disabled:opacity-50 transition-all"
-                      >
-                        {isPosting ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-3 h-3" />}
-                        Post Work Note
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Comments (External/Customer Visible) */}
-                <div className="rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50/80 to-slate-50/30 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Additional Comments</span>
-                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-200 text-blue-800 font-bold uppercase">Customer Visible</span>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Type comments visible to the customer here..."
-                      className="w-full p-3 border border-blue-200 rounded-md text-xs outline-none focus:ring-2 focus:ring-blue-300 min-h-[120px] resize-none bg-white/80 placeholder:text-blue-400"
-                    />
-                    <div className="flex items-center justify-between mt-3">
-                      <div className="flex items-center gap-4">
-                        <span className="text-[9px] text-blue-600 font-medium flex items-center gap-1">
-                          <Globe className="w-3 h-3" /> Visible to customer
-                        </span>
-                        <label className="flex items-center gap-1.5 text-[10px] text-blue-700 font-semibold cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={emailComment}
-                            onChange={(e) => setEmailComment(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-blue-300 text-blue-600 focus:ring-blue-500 accent-blue-500"
-                          />
-                          Email Note
-                        </label>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={!newComment.trim() || isPosting}
-                        onClick={(e) => handleAddComment(e)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold gap-1.5 h-8 px-4 shadow-sm disabled:opacity-50 transition-all"
-                      >
-                        {isPosting ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-3 h-3" />}
-                        Post Comment
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Activity Timeline (API-backed) */}
-              <ActivityTimeline
-                ticketId={id || ''}
-                createdAt={ticket.createdAt}
-                refreshTrigger={timelineRefresh}
-                userRole={profile?.role}
-              />
-            </div>
-          ) : activeTab === "Related Records" ? (
-            <div className="space-y-8 animate-in fade-in duration-300">
-              {/* Task SLAs Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-border pb-2">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Service Level Agreements</h3>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <SLATimer
-                    label="Response"
-                    deadline={fallbackResponseDeadline}
-                    metAt={ticket.firstResponseAt}
-                    startTime={ticket.responseSlaStartTime || ticket.createdAt}
-                    isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
-                    onHoldStart={ticket.onHoldStart}
-                    totalPausedTime={ticket.totalPausedTime}
-                  />
-                  <SLATimer
-                    label="Resolution"
-                    deadline={fallbackResolutionDeadline}
-                    metAt={ticket.resolvedAt}
-                    startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
-                    waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !== "New" ? new Date().toISOString() : null)}
-                    isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
-                    onHoldStart={ticket.onHoldStart}
-                    totalPausedTime={ticket.totalPausedTime}
-                  />
-                </div>
-              </div>
-
-              {/* Other Related Records */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border pb-2">
-                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Parent Incident</h3>
-                  </div>
-                  <div className="p-4 bg-muted/10 rounded border border-border border-dashed text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">No Parent Incident</p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border pb-2">
-                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Child Incidents</h3>
-                  </div>
-                  <div className="p-4 bg-muted/10 rounded border border-border border-dashed text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">No Child Incidents</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : activeTab === "SLA Monitoring" ? (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-slate-700">Detailed SLA Analytics</h3>
-                <div className="flex gap-2">
-                  <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded text-[9px] font-black border border-emerald-100 uppercase tracking-tighter">L1 Escalation: 80%</div>
-                  <div className="px-3 py-1 bg-orange-50 text-orange-700 rounded text-[9px] font-black border border-orange-100 uppercase tracking-tighter">L2 Escalation: 90%</div>
-                  <div className="px-3 py-1 bg-red-50 text-red-700 rounded text-[9px] font-black border border-red-100 uppercase tracking-tighter">Breach: 100%</div>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-black uppercase text-slate-500">Response Performance</span>
-                      <span className="text-xs font-mono font-bold text-slate-700">Target: {ticket.responseDeadline ? new Date(ticket.responseDeadline).toLocaleTimeString() : '--'}</span>
-                    </div>
-                    <SLATimer
-                      label="Live Response"
-                      deadline={fallbackResponseDeadline}
-                      metAt={ticket.firstResponseAt}
-                      startTime={ticket.responseSlaStartTime || ticket.createdAt}
-                      isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
-                      onHoldStart={ticket.onHoldStart}
-                      totalPausedTime={ticket.totalPausedTime}
-                    />
-                    <div className="p-3 bg-white rounded-lg border border-slate-200 text-[10px] text-slate-500 italic">
-                      The Response SLA tracks the time from ticket creation until the first meaningful update by an agent.
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-black uppercase text-slate-500">Resolution Performance</span>
-                      <span className="text-xs font-mono font-bold text-slate-700">Target: {fallbackResolutionDeadline ? new Date(fallbackResolutionDeadline).toLocaleTimeString() : '--'}</span>
-                    </div>
-                    <SLATimer
-                      label="Live Resolution"
-                      deadline={fallbackResolutionDeadline}
-                      metAt={ticket.resolvedAt}
-                      startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
-                      waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !== "New" ? new Date().toISOString() : null)}
-                      isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
-                      onHoldStart={ticket.onHoldStart}
-                      totalPausedTime={ticket.totalPausedTime}
-                    />
-                    <div className="p-3 bg-white rounded-lg border border-slate-200 text-[10px] text-slate-500 italic">
-                      The Resolution SLA starts after the first response and tracks the total time until the incident is marked as Resolved.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">SLA Transition History</h4>
-                <div className="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
-                  <table className="w-full text-left text-xs bg-white">
-                    <thead className="bg-slate-50 font-bold text-slate-600 border-b border-slate-200">
-                      <tr>
-                        <th className="p-3 uppercase tracking-tighter">Event Description</th>
-                        <th className="p-3 uppercase tracking-tighter">Timestamp</th>
-                        <th className="p-3 uppercase tracking-tighter">Actor</th>
-                        <th className="p-3 uppercase tracking-tighter">Audit Link</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {ticket.history?.filter((h: any) => h.action.includes('SLA') || h.action.includes('Breach')).map((h: any, i: number) => (
-                        <tr key={i} className="hover:bg-slate-50/50">
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              <div className={cn("w-1.5 h-1.5 rounded-full", h.action.includes('Breach') ? "bg-red-500" : "bg-blue-500")} />
-                              <span className="font-semibold text-slate-700">{h.action}</span>
-                            </div>
-                          </td>
-                          <td className="p-3 text-slate-500 font-mono">{new Date(h.timestamp).toLocaleString()}</td>
-                          <td className="p-3 text-slate-600 font-medium">{h.user}</td>
-                          <td className="p-3">
-                            <span className="text-[10px] text-blue-600 font-bold cursor-pointer hover:underline uppercase tracking-tighter">Verify Log</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {effectiveSlaDelay?.meta.breachReasonSubmittedAt && (
-                <div className="mt-6 bg-red-50/50 border border-red-200 rounded-xl p-6 shadow-sm animate-in fade-in duration-300">
-                  <div className="flex items-center gap-2.5 mb-4 border-b border-red-100 pb-3">
-                    <ShieldAlert className="w-5 h-5 text-red-600" />
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-800">SLA Breach Reason & RCA</h4>
-                      <p className="text-[11px] text-slate-500">
-                        Submitted by <span className="font-semibold">{effectiveSlaDelay.meta.breachReasonSubmittedBy}</span> on {new Date(effectiveSlaDelay.meta.breachReasonSubmittedAt).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Root Cause Analysis</span>
-                      <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
-                        {effectiveSlaDelay.meta.rootCauseAnalysis || "N/A"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dependencies & Blockers</span>
-                      <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
-                        {effectiveSlaDelay.meta.dependencyDetails || "N/A"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Corrective Action Taken</span>
-                      <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
-                        {effectiveSlaDelay.meta.correctiveActionDetails || "N/A"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Preventive Action Plan</span>
-                      <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
-                        {effectiveSlaDelay.meta.preventiveAction || "N/A"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : activeTab === "Resolution Information" ? (
-            <div className="animate-in fade-in duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-6">
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-[11px] text-right font-medium text-muted-foreground uppercase">Knowledge</label>
-                    <div className="col-span-2 flex items-center gap-2">
-                      <input type="checkbox" className="w-3.5 h-3.5 rounded" />
-                      <span className="text-[10px] text-muted-foreground uppercase font-bold">Knowledge base</span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolution code</label>
-                    <select
-                      value={editedTicket?.resolutionCode || ""}
-                      onChange={(e) => updateLocalField("resolutionCode", e.target.value)}
-                      className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 font-semibold text-blue-600"
-                    >
-                      <option value="">-- None --</option>
-                      {[
-                        "Permanent Fix Applied",
-                        "Temporary Workaround Provided",
-                        "Configuration Change",
-                        "Software Patch Applied",
-                        "Hardware Replaced",
-                        "Access / Permission Corrected",
-                        "Network Issue Resolved",
-                        "User Guidance Provided",
-                        "Third-Party Vendor Resolution",
-                        "Monitoring / No Issue Found",
-                        "Auto Resolved",
-                        "Duplicate Ticket",
-                        "Cancelled by User",
-                        "Cannot Reproduce",
-                        "No Response from User"
-                      ].map(code => (
-                        <option key={code} value={code}>{code}</option>
-                      ))}
-                      {/* Backward compatibility for old codes */}
-                      {editedTicket?.resolutionCode && ![
-                        "Permanent Fix Applied",
-                        "Temporary Workaround Provided",
-                        "Configuration Change",
-                        "Software Patch Applied",
-                        "Hardware Replaced",
-                        "Access / Permission Corrected",
-                        "Network Issue Resolved",
-                        "User Guidance Provided",
-                        "Third-Party Vendor Resolution",
-                        "Monitoring / No Issue Found",
-                        "Auto Resolved",
-                        "Duplicate Ticket",
-                        "Cancelled by User",
-                        "Cannot Reproduce",
-                        "No Response from User"
-                      ].includes(editedTicket.resolutionCode) && (
-                          <option value={editedTicket.resolutionCode}>{editedTicket.resolutionCode} (Legacy)</option>
-                        )}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolution method</label>
-                    <select
-                      value={editedTicket?.resolutionMethod || ""}
-                      onChange={(e) => updateLocalField("resolutionMethod", e.target.value)}
-                      className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8"
-                    >
-                      <option value="">-- None --</option>
-                      {[
-                        "Remote Support",
-                        "Onsite Support",
-                        "Phone Support",
-                        "Email Support",
-                        "Chat Support",
-                        "Self-Service",
-                        "Automated Resolution",
-                        "Third-Party Vendor",
-                        "Field Engineer Visit"
-                      ].map(method => (
-                        <option key={method} value={method}>{method}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {(editedTicket?.resolutionCode === "Duplicate Ticket" ||
-                    editedTicket?.resolutionCode === "Cancelled by User" ||
-                    editedTicket?.resolutionCode === "Cannot Reproduce" ||
-                    editedTicket?.resolutionCode === "No Response from User") && (
-                      <div className="grid grid-cols-3 items-center gap-4 animate-in slide-in-from-top-1 duration-200">
-                        <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Closure reason</label>
-                        <select
-                          value={editedTicket?.closureReason || ""}
-                          onChange={(e) => updateLocalField("closureReason", e.target.value)}
-                          className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8"
-                        >
-                          <option value="">-- None --</option>
-                          {[
-                            "Duplicate Ticket",
-                            "Cancelled by User",
-                            "Rejected Request",
-                            "No Response from User",
-                            "Cannot Reproduce",
-                            "Invalid Request"
-                          ].map(reason => (
-                            <option key={reason} value={reason}>{reason}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  <div className="grid grid-cols-3 items-start gap-4">
-                    <label className="text-[11px] text-right font-medium text-muted-foreground uppercase mt-1.5 leading-tight">Resolution notes</label>
-                    <textarea
-                      value={editedTicket?.resolutionNotes || ""}
-                      onChange={(e) => updateLocalField("resolutionNotes", e.target.value)}
-                      className="col-span-2 p-2 border border-border rounded text-xs outline-none min-h-[80px] resize-none focus:ring-1 focus:ring-blue-500 transition-all"
-                      placeholder="Explain how the issue was resolved..."
-                    />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolution duration</label>
-                    <input readOnly value={ticket.resolutionDuration ? `${Math.round(ticket.resolutionDuration / 3600000)}h ${Math.round((ticket.resolutionDuration % 3600000) / 60000)}m` : "—"} className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-mono" />
-                  </div>
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolved by</label>
-                    <input readOnly value={ticket.resolvedBy || profile?.name || "-"} className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs" />
-                  </div>
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolved at</label>
-                    <input readOnly value={ticket.resolvedAt ? new Date(ticket.resolvedAt).toLocaleString() : "—"} className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-mono" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-
-
-      <SLADelayDialog
-        open={!!activePendingType}
-        pendingType={activePendingType}
-        saving={slaDelaySaving}
-        monitoredSla={effectiveSlaDelay?.usage.slaType || effectiveSlaDelay?.meta.monitoredSla || null}
-        percentageUsed={effectiveSlaDelay?.usage.percentageUsed || effectiveSlaDelay?.meta.monitoredPercentage || 0}
-        reminderCount={effectiveSlaDelay?.meta.reminderCount || 0}
-        breachDurationLabel={undefined}
-        form={slaDelayForm}
-        onChange={updateSlaDelayField}
-        onSubmit={handleSubmitSlaDelay}
-      />
-
-      <SaveActivityModal
-        show={showSessionPopup}
-        onClose={() => setShowSessionPopup(false)}
-        sessionForm={sessionForm}
-        setSessionForm={setSessionForm}
-        onSave={handleSaveSession}
-        savingSession={savingSession}
-        selectedIncident={ticket?.number}
-      />
-    </div>
-  );
+ const { id } = useParams();
+ const navigate = useNavigate();
+ const { user, profile } = useAuth();
+ const { categories, subcategories, serviceProviders, groups } = useServiceCatalog();
+ const { status: trackerStatus, elapsed: trackerElapsed, startWatcher, stopWatcher, setSelectedIncident, entries: trackerEntries, summary: trackerSummary } = useActivityTracker();
+ const isActiveSession = trackerStatus === 'active';
+
+ const currentTab = useCurrentTab();
+ const { setTabTitle } = useWorkspace();
+
+ const [ticket, setTicket] = useState<any>(null);
+
+ useEffect(() => {
+ if (ticket && currentTab?.tabId && setTabTitle) {
+ const num = ticket.number ||"Ticket";
+ const desc = ticket.short_description || ticket.title ||"Details";
+ setTabTitle(currentTab.tabId, `${num}: ${desc}`);
+ }
+ }, [ticket, currentTab?.tabId, setTabTitle]);
+ const [editedTicket, setEditedTicket] = useState<any>(null);
+ const customFieldsRef = useRef<any>(null);
+ const canEdit = profile?.role ? (ROLE_HIERARCHY[profile.role as Role] >= ROLE_HIERARCHY["agent"]) : false;
+
+ const [comments, setComments] = useState<any[]>([]);
+ const [newComment, setNewComment] = useState("");
+ const [workNote, setWorkNote] = useState("");
+ const [emailWorkNote, setEmailWorkNote] = useState(false);
+ const [emailComment, setEmailComment] = useState(false);
+ const [isUpdating, setIsUpdating] = useState(false);
+ const [agents, setAgents] = useState<any[]>([]);
+ const [incidentCategories, setIncidentCategories] = useState<string[]>([]);
+ const [dynamicFields, setDynamicFields] = useState<any[]>([]);
+ const [dynamicOptions, setDynamicOptions] = useState<Record<string, any[]>>({});
+
+
+
+ // AI Work Session state
+ const [aiProcessing, setAiProcessing] = useState(false);
+ const [aiNotes, setAiNotes] = useState<WorkAnalysis | null>(null);
+ const [aiStatusMessage, setAiStatusMessage] = useState("");
+ const [showSessionPopup, setShowSessionPopup] = useState(false);
+ const [savingSession, setSavingSession] = useState(false);
+ const [sessionForm, setSessionForm] = useState<SessionFormType>({
+ entryDate: new Date().toISOString().split("T")[0],
+ startTime:"",
+ endTime:"",
+ minutesWorked: 0,
+ task:"Ticket Resolution",
+ customTask:"",
+ workType:"Support",
+ shortDescription:"",
+ description:"",
+ notes:"",
+ billable:"Billable",
+ });
+ const [timelineRefresh, setTimelineRefresh] = useState(0);
+ const [pastSessions, setPastSessions] = useState<any[]>([]);
+
+ useEffect(() => {
+ if (ticket?.number) {
+ fetch(`/api/activity-sessions?ticket_number=${ticket.number}`)
+ .then(r => r.json())
+ .then(data => {
+ if (Array.isArray(data)) setPastSessions(data);
+ })
+ .catch(() => {});
+ }
+ }, [ticket?.number, timelineRefresh]);
+ const [isPosting, setIsPosting] = useState(false);
+ const [postMessage, setPostMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+ const [slaDelaySaving, setSlaDelaySaving] = useState(false);
+ const [slaDelayForm, setSlaDelayForm] = useState({
+ delayReason:"",
+ progressUpdate:"",
+ blockers:"",
+ eta:"",
+ nextActionPlan:"",
+ resolutionPercentage:"",
+ rootCauseAnalysis:"",
+ correctiveActionDetails:"",
+ finalResolutionExplanation:"",
+ dependencyDetails:"",
+ preventiveAction:"",
+ });
+
+
+ const visibleCategories = categories.filter((item) => item.status === 'active');
+ const visibleSubcategories = subcategories.filter(s => s.categoryId === editedTicket?.categoryId && s.status === 'active');
+ const visibleProviders = serviceProviders.filter(p => p.subcategoryId === editedTicket?.subcategoryId && p.status === 'active');
+ const visibleGroups = groups.filter(g => g.serviceProviderId === editedTicket?.serviceId && g.status === 'active');
+
+ useEffect(() => {
+ getDocs(collection(db,"users")).then(snap => {
+ const usersList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ setAgents(usersList.filter((u: any) => ROLE_HIERARCHY[u.role as Role] >= ROLE_HIERARCHY["agent"]));
+ }).catch(() => {
+ // Fallback: load agents from MySQL API
+ fetch('/api/users').then(r => r.json()).then((usersList: any[]) => {
+ setAgents(usersList.filter((u: any) => ['agent', 'admin', 'sub_admin', 'super_admin', 'ultra_super_admin'].includes(u.role)));
+ }).catch(() => { });
+ });
+ // Fetch active incident categories and options dynamically
+ fetch("/api/incident-categories?active_only=true")
+ .then(r => r.json())
+ .then(async (data) => {
+ if (Array.isArray(data)) {
+ setIncidentCategories(data.map((c: any) => c.name));
+ setDynamicFields(data);
+
+ // Fetch options for each dynamic field
+ const optionsMap: Record<string, any[]> = {};
+ await Promise.all(
+ data.map(async (cat: any) => {
+ try {
+ const res = await fetch(`/api/incident-categories/options?category_id=${cat.id}&active_only=true`);
+ if (res.ok) {
+ const opts = await res.json();
+ optionsMap[cat.id] = opts;
+ }
+ } catch (e) {
+ console.error("Error loading options for category", cat.id, e);
+ }
+ })
+ );
+ setDynamicOptions(optionsMap);
+ }
+ })
+ .catch(() => {
+ setIncidentCategories([
+"Hardware Issue","Software Issue","Network Issue","System Access",
+"Security Issue","Login Problem","Email Issue","Performance Issue",
+"Service Request","Other"
+ ]);
+ });
+ }, []);
+
+ // DYNAMIC GROUP FILTERING: Only show users belonging to the selected group, or all agents if no group selected
+ const selectedGroupObj = groups.find(g => g.name === editedTicket?.assignmentGroup);
+ const filteredAgents = selectedGroupObj?.memberIds
+ ? agents.filter(a => selectedGroupObj.memberIds?.includes(a.id) || selectedGroupObj.memberIds?.includes(a.uid))
+ : agents;
+
+ // Note: Local Firestore timer syncing is removed in favor of global AI Activity Tracker.
+
+ useEffect(() => {
+ setTicket(null);
+ setEditedTicket(null);
+ customFieldsRef.current = null;
+ }, [id]);
+
+ useEffect(() => {
+ if (!id) return;
+ 
+ // Resolve ticket_number to actual document ID if needed
+ if (id.startsWith('INC') || id.startsWith('REQ') || id.startsWith('TSK')) {
+ const q = query(collection(db,"tickets"), where("number","==", id));
+ getDocs(q).then((snap) => {
+ if (!snap.empty) {
+ const actualId = snap.docs[0].id;
+ navigate(`/tickets/${actualId}`, { replace: true });
+ } else {
+ navigate("/tickets");
+ }
+ }).catch((e) => {
+ console.error(e);
+ navigate("/tickets");
+ });
+ return;
+ }
+ const unsubscribe = onSnapshot(doc(db,"tickets", id), (docSnapshot) => {
+ if (docSnapshot.exists()) {
+ const data = { id: docSnapshot.id, ...docSnapshot.data() } as any;
+ setTicket(data);
+ setEditedTicket((prev: any) => {
+ const mergedFields = customFieldsRef.current || {};
+ if (prev && prev.status !== undefined) {
+ return {
+ ...prev,
+ customFields: {
+ ...(prev.customFields || {}),
+ ...mergedFields
+ }
+ };
+ }
+ return {
+ ...data,
+ customFields: {
+ ...(data.customFields || {}),
+ ...mergedFields
+ }
+ };
+ });
+ } else {
+ navigate("/tickets");
+ }
+ }, (error) => {
+ handleFirestoreError(error, OperationType.GET, `tickets/${id}`);
+ });
+ return unsubscribe;
+ }, [id, navigate]);
+
+ useEffect(() => {
+ if (!id) return;
+ fetch(`/api/tickets/${id}/custom-fields`)
+ .then(r => r.json())
+ .then(savedFields => {
+ if (savedFields && typeof savedFields === 'object') {
+ customFieldsRef.current = savedFields;
+ setEditedTicket((prev: any) => {
+ if (!prev) return null;
+ return {
+ ...prev,
+ customFields: {
+ ...(prev.customFields || {}),
+ ...savedFields
+ }
+ };
+ });
+ }
+ })
+ .catch(err => console.error("Error fetching custom fields mapping:", err));
+ }, [id]);
+
+ useEffect(() => {
+ if (!id) return;
+ const q = query(collection(db,"tickets", id,"comments"), orderBy("createdAt","asc"));
+ const unsubscribe = onSnapshot(q, (snapshot) => {
+ setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+ }, (error) => {
+ handleFirestoreError(error, OperationType.LIST, `tickets/${id}/comments`);
+ });
+ return unsubscribe;
+ }, [id]);
+
+ const handleUpdate = async () => {
+ if (!id || !user || !editedTicket) return;
+
+ const hasCategoryAccess = ["admin","super_admin","ultra_super_admin"].includes(profile?.role ||"") ||
+ ["arun.g@technosprint.net","swedhasris@gmail.com","ulter@technosprint.net","admin@technosprint.net","admin@connectit.local","demo-admin@connectit.local","demo-super_admin@connectit.local","demo-ultra_super_admin@connectit.local"].includes(user?.email || profile?.email ||"");
+ if (hasCategoryAccess) {
+ for (const field of dynamicFields) {
+ if (!editedTicket?.customFields?.[field.id]) {
+ alert(`Please select a value for: ${field.name}`);
+ return;
+ }
+ }
+ }
+
+ const isPaused = editedTicket.status ==="On Hold" || editedTicket.status ==="Waiting for Customer" || editedTicket.status ==="Awaiting User" || editedTicket.status ==="Awaiting Vendor";
+ if (isPaused && (!editedTicket.onHoldReason || editedTicket.onHoldReason.trim() ==="")) {
+ alert("Please select a Pause Reason before putting the ticket in a paused state.");
+ return;
+ }
+
+ setIsUpdating(true);
+
+
+
+ try {
+ const historyEntries: any[] = [];
+ const fields = ["incidentCategory","incident_category","category","categoryId","subcategory","subcategoryId","service","serviceId","serviceProvider","status","onHoldReason","impact","urgency","assignmentGroup","title","description","assignedTo","affectedUser","resolutionCode","resolutionNotes","resolutionMethod","closureReason","watchList","workNotesList","businessPhone","location","configurationItem","computerName","knowledgeArticleUsed","originalAssignmentGroup","acknowledged","passwordReset","rackspaceTicketNo","additionalInformation"];
+
+ fields.forEach(field => {
+ if (editedTicket[field] !== (ticket[field] ||"")) {
+ const entry = {
+ action: `Field ${field} updated from ${ticket[field] ||"none"} to ${editedTicket[field] ||"none"}`,
+ timestamp: new Date().toISOString(),
+ user: profile?.name || user.email
+ };
+ historyEntries.push(entry);
+ }
+ });
+
+ // Special check: If only resolution notes/code were changed, but no other fields in the list, we still want to save.
+ // The 'Submit' button should always save editedTicket.
+
+ const { id: _, ...payload } = editedTicket;
+
+ const assignedUserName = editedTicket.assignedTo
+ ? agents.find(a => a.id === editedTicket.assignedTo)?.name
+ || agents.find(a => a.id === editedTicket.assignedTo)?.email
+ || editedTicket.assignedToName ||""
+ :"";
+
+ const updates: any = {
+ ...payload,
+ assignedToName: assignedUserName,
+ updatedAt: serverTimestamp(),
+ history: [...(ticket.history || []), ...historyEntries]
+ };
+
+ const isResolved = editedTicket.status ==="Resolved" || editedTicket.status ==="Closed";
+ const isPaused = editedTicket.status ==="On Hold" || editedTicket.status ==="Waiting for Customer" || editedTicket.status ==="Awaiting User" || editedTicket.status ==="Awaiting Vendor";
+
+ const isSlaBreached = effectiveSlaDelay?.usage.breached || effectiveSlaDelay?.meta.latestStatus ==="breached";
+ const hasSubmittedRca = !!(effectiveSlaDelay?.meta.breachReasonSubmittedAt || effectiveSlaDelay?.meta.rootCauseAnalysis?.trim());
+ if (isResolved && isSlaBreached && !hasSubmittedRca) {
+ alert("This ticket has breached its SLA. You must submit a Root Cause Analysis (RCA) before resolving or closing the ticket.");
+ setLocalPendingType("rca");
+ setIsUpdating(false);
+ return;
+ }
+
+ if (editedTicket.status !== ticket.status) {
+
+ // Stop Response SLA if the state is changed out of"New" (i.e. acknowledging the ticket)
+ if (editedTicket.status !=="New" && !ticket.firstResponseAt) {
+ const responseNow = new Date();
+ updates.firstResponseAt = responseNow.toISOString();
+ updates.responseSlaStatus ="Completed";
+
+ // START Resolution SLA from this moment using stored SLA metadata
+ updates.resolutionSlaStatus ="In Progress";
+ const resHours = ticket.slaResolutionHours || 24;
+ updates.resolutionDeadline = calculateSLADeadline(responseNow, resHours, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString();
+ updates.resolutionSlaStartTime = responseNow.toISOString();
+ }
+
+ if (isResolved && !ticket.resolvedAt) {
+ updates.resolvedAt = new Date().toISOString();
+ updates.resolvedBy = profile?.name || user.email;
+ updates.resolutionSlaStatus ="Completed";
+ updates.onHoldStart = null;
+
+ // Ensure resolution fields are present if being resolved
+ if (!editedTicket.resolutionCode || !editedTicket.resolutionNotes || !editedTicket.resolutionMethod) {
+ alert("Please provide Resolution Code, Resolution Method, and Resolution Notes before resolving.");
+ setIsUpdating(false);
+ return;
+ }
+
+ // Calculate resolution duration
+ const createdAtMs = ticket.createdAt?.seconds ? ticket.createdAt.seconds * 1000 : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
+ const resolvedAtMs = Date.now();
+ const durationMs = resolvedAtMs - createdAtMs;
+ updates.resolutionDuration = Math.max(0, durationMs);
+ } else if (!isResolved && ticket.resolvedAt) {
+ updates.resolvedAt = null;
+ updates.resolvedBy = null;
+ updates.resolutionDuration = null;
+ updates.resolutionSlaStatus ="In Progress";
+ }
+
+ if (isPaused && !isResolved) {
+ updates.onHoldStart = new Date().toISOString();
+ updates.onHoldReason = editedTicket.onHoldReason ||"";
+ } else if ((ticket.status ==="On Hold" || ticket.status ==="Waiting for Customer" || ticket.status ==="Awaiting User" || ticket.status ==="Awaiting Vendor") && !isPaused) {
+ const onHoldStartStr = ticket.onHoldStart || new Date().toISOString();
+ const onHoldStart = new Date(onHoldStartStr).getTime();
+ const now = new Date().getTime();
+ const pauseDuration = Math.max(0, now - onHoldStart);
+
+ const totalPaused = (Number(ticket.totalPausedTime) || 0) + pauseDuration;
+ updates.totalPausedTime = totalPaused;
+ updates.onHoldStart = null;
+ updates.onHoldReason = null;
+
+ if (ticket.resolutionDeadline) {
+ const oldRes = new Date(ticket.resolutionDeadline).getTime();
+ if (!isNaN(oldRes)) updates.resolutionDeadline = new Date(oldRes + pauseDuration).toISOString();
+ }
+ if (ticket.responseDeadline && !ticket.firstResponseAt) {
+ const oldResp = new Date(ticket.responseDeadline).getTime();
+ if (!isNaN(oldResp)) updates.responseDeadline = new Date(oldResp + pauseDuration).toISOString();
+ }
+ }
+ }
+
+ // --- ADVANCED SCORING LOGIC ---
+ let pointsAwarded = 0;
+ if (isResolved && !ticket.resolvedAt) {
+ // 1. Priority Base Points
+ const priorityStr = ticket.priority ||"4 - Low";
+ let basePoints = 10;
+ if (priorityStr.includes("1")) basePoints = 100;
+ else if (priorityStr.includes("2")) basePoints = 50;
+ else if (priorityStr.includes("3")) basePoints = 25;
+
+ pointsAwarded += basePoints;
+
+ // 2. Response Bonus (if acknowledged on time)
+ if (ticket.responseSlaStatus ==="Completed") {
+ pointsAwarded += 50;
+ }
+
+ // 3. Resolution Speed Bonus
+ if (ticket.resolutionDeadline) {
+ const deadline = new Date(ticket.resolutionDeadline).getTime();
+ const resolvedAtMs = new Date().getTime();
+ const createdAtMs = ticket.createdAt?.seconds ? ticket.createdAt.seconds * 1000 : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : 0);
+
+ if (createdAtMs > 0 && resolvedAtMs < deadline) {
+ const totalSla = deadline - createdAtMs;
+ const timeSaved = deadline - resolvedAtMs;
+ const speedBonus = Math.round((timeSaved / totalSla) * 100);
+ pointsAwarded += Math.max(speedBonus, 10); // Min 10 points for meeting SLA
+ } else if (resolvedAtMs >= deadline) {
+ pointsAwarded = Math.round(pointsAwarded * 0.5); // Penalty: 50% points if breached
+ }
+ }
+ }
+
+ const ticketRef = doc(db,"tickets", id);
+ const finalUpdates = {
+ ...updates,
+ points: pointsAwarded > 0 ? (ticket.points || 0) + pointsAwarded : (ticket.points || 0)
+ };
+
+ // Save dynamic custom fields selections on update
+ if (hasCategoryAccess && editedTicket.customFields && Object.keys(editedTicket.customFields).length > 0) {
+ try {
+ await fetch(`/api/tickets/${id}/custom-fields`, {
+ method:"POST",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({ customFields: editedTicket.customFields })
+ });
+ } catch (e) {
+ console.error("Error saving dynamic custom fields:", e);
+ }
+ }
+ await updateDoc(ticketRef, finalUpdates);
+ setTimelineRefresh(prev => prev + 1);
+ // Dispatch real-time notification
+ try {
+ fetch("/api/notifications/dispatch", {
+ method:"POST",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({
+ ticket: {
+ id: id,
+ ticket_number: ticket.number,
+ created_by: ticket.createdBy,
+ created_by_name: ticket.createdByName || ticket.caller,
+ assigned_to: finalUpdates.assignedTo !== undefined ? finalUpdates.assignedTo : ticket.assignedTo,
+ assigned_to_name: finalUpdates.assignedToName !== undefined ? finalUpdates.assignedToName : ticket.assignedToName,
+ status: finalUpdates.status !== undefined ? finalUpdates.status : ticket.status,
+ priority: finalUpdates.priority !== undefined ? finalUpdates.priority : ticket.priority
+ },
+ actorId: user.uid,
+ actorName: profile?.name || user.email,
+ type:"update",
+ oldStatus: ticket.status,
+ newStatus: finalUpdates.status !== undefined ? finalUpdates.status : ticket.status,
+ oldAssignee: ticket.assignedTo,
+ newAssignee: finalUpdates.assignedTo !== undefined ? finalUpdates.assignedTo : ticket.assignedTo
+ })
+ });
+ } catch (e) {
+ console.error("Failed to dispatch update notification:", e);
+ }
+
+ // Assignment changes and all other field changes are securely generated by the backend API.
+
+ if (pointsAwarded > 0) {
+ confetti({
+ particleCount: 150,
+ spread: 70,
+ origin: { y: 0.6 },
+ colors: ["#22c55e","#fbbf24","#3b82f6"]
+ });
+ alert(`Awesome resolution! You earned ${pointsAwarded} points!\n\nBreakdown:\n- Priority Base: Included\n- Response Bonus: ${ticket.responseSlaStatus ==="Completed" ?"Yes" :"No"}\n- Speed Bonus: Applied`);
+ setTimeout(() => navigate("/tickets"), 1500);
+ } else {
+ alert("Incident updated successfully");
+ if (isResolved) navigate("/tickets");
+ }
+ } catch (error: any) {
+ console.error("Error updating ticket:", error);
+ alert(`Failed to update incident: ${error.message ||"Unknown error"}`);
+ } finally {
+ setIsUpdating(false);
+ }
+ };
+
+ const handleAddComment = async (e: React.FormEvent) => {
+ e.preventDefault();
+ if (!newComment.trim() || !id || !user) return;
+ setIsPosting(true);
+ try {
+ // Post to API-backed activity timeline (customer-visible comment)
+ const res = await fetch(`/api/tickets/${id}/activities`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ activity_type: 'comment',
+ visibility_type: 'public',
+ created_by: user.uid,
+ created_by_name: profile?.name || user.email,
+ message: newComment.trim(),
+ email_note: emailComment
+ })
+ });
+ if (!res.ok) throw new Error('Failed to post comment');
+
+ // Update Firestore ticket metadata (SLA first response)
+ try {
+ const now = new Date().toISOString();
+ const updates: any = { updatedAt: serverTimestamp(), history: [...(ticket.history || []), { action:"Comment Added", timestamp: now, user: profile?.name || user.email }] };
+ if (!ticket.firstResponseAt) {
+ updates.firstResponseAt = now;
+ updates.responseSlaStatus ="Completed";
+ // START Resolution SLA from this moment
+ updates.resolutionSlaStatus ="In Progress";
+ const resHours = ticket.slaResolutionHours || 24;
+ const resolutionWindowMs = resHours * 60 * 60 * 1000;
+ updates.resolutionDeadline = new Date(new Date(now).getTime() + resolutionWindowMs).toISOString();
+ updates.resolutionSlaStartTime = now;
+ }
+ await updateDoc(doc(db,"tickets", id), updates);
+ } catch (e) { /* Firestore update non-critical */ }
+
+ setNewComment("");
+ setEmailComment(false);
+ setTimelineRefresh(prev => prev + 1);
+ setPostMessage({ text: 'Comment posted successfully', type: 'success' });
+ setTimeout(() => setPostMessage(null), 3000);
+ } catch (error: any) {
+ console.error(error);
+ setPostMessage({ text: 'Failed to post comment', type: 'error' });
+ setTimeout(() => setPostMessage(null), 4000);
+ } finally {
+ setIsPosting(false);
+ }
+ };
+
+ const handleAddWorkNote = async (e: React.FormEvent) => {
+ e.preventDefault();
+ if (!workNote.trim() || !id || !user) return;
+ setIsPosting(true);
+ try {
+ // Post to API-backed activity timeline (internal/private work note)
+ const res = await fetch(`/api/tickets/${id}/activities`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ activity_type: 'work_note',
+ visibility_type: 'internal',
+ created_by: user.uid,
+ created_by_name: profile?.name || user.email,
+ message: workNote.trim(),
+ email_note: emailWorkNote
+ })
+ });
+ if (!res.ok) throw new Error('Failed to post work note');
+
+ // Update Firestore ticket metadata
+ try {
+ const now = new Date().toISOString();
+ const updates: any = { updatedAt: serverTimestamp(), history: [...(ticket.history || []), { action:"Work Note Added", timestamp: now, user: profile?.name || user.email }] };
+ if (!ticket.firstResponseAt) {
+ updates.firstResponseAt = now;
+ updates.responseSlaStatus ="Completed";
+ // START Resolution SLA from this moment
+ updates.resolutionSlaStatus ="In Progress";
+ const resHours = ticket.slaResolutionHours || 24;
+ updates.resolutionDeadline = calculateSLADeadline(new Date(now), resHours, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString();
+ updates.resolutionSlaStartTime = now;
+ }
+ await updateDoc(doc(db,"tickets", id), updates);
+ } catch (e) { /* Firestore update non-critical */ }
+
+ setWorkNote("");
+ setEmailWorkNote(false);
+ setTimelineRefresh(prev => prev + 1);
+ setPostMessage({ text: 'Work note added successfully', type: 'success' });
+ setTimeout(() => setPostMessage(null), 3000);
+ } catch (error: any) {
+ console.error(error);
+ setPostMessage({ text: 'Failed to add work note', type: 'error' });
+ setTimeout(() => setPostMessage(null), 4000);
+ } finally {
+ setIsPosting(false);
+ }
+ };
+
+ const updateLocalField = (field: string, value: string) => {
+ setEditedTicket((prev: any) => ({ ...prev, [field]: value }));
+ };
+
+ // Timer functions — AI-Enhanced
+ const handleStartTimer = async () => {
+ setAiProcessing(true);
+ setAiStatusMessage("🚀 Starting AI Work Session...");
+ setSelectedIncident(ticket.number);
+ try {
+ await startWatcher();
+
+ // Post"AI Work Session Started" to timeline
+ await fetch(`/api/tickets/${id}/activities`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ activity_type: 'system',
+ visibility_type: 'internal',
+ created_by: user.uid,
+ created_by_name: profile?.name || user.email,
+ message: 'AI Work Session Started'
+ })
+ });
+ setTimelineRefresh(prev => prev + 1);
+ 
+ setAiStatusMessage("✅ Session active!");
+ setTimeout(() => setAiStatusMessage(""), 3000);
+ } catch (error) {
+ console.error("[AI WorkSession] Start analysis failed:", error);
+ setAiStatusMessage("⚠️ Failed to start session");
+ setTimeout(() => setAiStatusMessage(""), 3000);
+ } finally {
+ setAiProcessing(false);
+ }
+ };
+
+ const handleStopTimer = async () => {
+ setAiProcessing(true);
+ setAiStatusMessage("🛑 Stopping AI session...");
+ try {
+ const now = new Date();
+ const startMs = Date.now() - (trackerElapsed * 1000);
+ const start = new Date(startMs);
+ const calculatedMinutes = Math.max(1, Math.round(trackerElapsed / 60));
+
+ const pad = (n: number) => String(n).padStart(2, '0');
+ const formatTimeForInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+ const formatDateForInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+ const initialStart = formatTimeForInput(start);
+ const initialEnd = formatTimeForInput(now);
+ const initialDate = formatDateForInput(now);
+
+ await stopWatcher();
+
+ setSessionForm({
+ entryDate: initialDate,
+ startTime: initialStart,
+ endTime: initialEnd,
+ minutesWorked: calculatedMinutes,
+ task:"Ticket Resolution",
+ customTask:"",
+ workType:"Support",
+ shortDescription: trackerSummary ? trackerSummary.substring(0, 100) :"",
+ description: trackerSummary ||"",
+ notes:"",
+ billable:"Billable"
+ });
+
+ // Post"AI Work Session Completed" to timeline
+ await fetch(`/api/tickets/${id}/activities`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ activity_type: 'system',
+ visibility_type: 'internal',
+ created_by: user.uid,
+ created_by_name: profile?.name || user.email,
+ message: `AI Work Session Completed. Duration: ${Math.floor(trackerElapsed / 60)}m ${trackerElapsed % 60}s`
+ })
+ });
+ setTimelineRefresh(prev => prev + 1);
+ 
+ setAiStatusMessage("✅ Session completed!");
+ setTimeout(() => setAiStatusMessage(""), 3000);
+ 
+ setShowSessionPopup(true);
+ } catch (error) {
+ console.error("[AI WorkSession] Stop analysis failed:", error);
+ setAiStatusMessage("⚠️ Failed to stop properly");
+ setTimeout(() => setAiStatusMessage(""), 3000);
+ } finally {
+ setAiProcessing(false);
+ }
+ };
+
+ const handleSaveSession = async () => {
+ if (!user) return;
+ if (!sessionForm.shortDescription.trim()) {
+ alert("Short Description is required.");
+ return;
+ }
+
+ setSavingSession(true);
+ try {
+ const userId = user.uid;
+ const finalTask = sessionForm.task ==="Other..." ? sessionForm.customTask : sessionForm.task;
+ const finalShortDesc = ticket?.number 
+ ? `[${ticket.number}] ${sessionForm.shortDescription}`
+ : sessionForm.shortDescription;
+
+ const entryD = new Date(sessionForm.entryDate +"T12:00:00");
+ const day = entryD.getDay();
+ const diff = entryD.getDate() - day + (day === 0 ? -6 : 1);
+ const mon = new Date(entryD);
+ mon.setDate(diff);
+ const monStr = mon.toISOString().split("T")[0];
+ const sun = new Date(mon.getTime() + 6 * 86400000);
+ const sunStr = sun.toISOString().split("T")[0];
+
+ const tsRes = await fetch("/api/timesheets/get-or-create", {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ user_id: userId,
+ week_start: monStr,
+ week_end: sunStr
+ })
+ });
+ const ts = await tsRes.json();
+
+ const response = await fetch("/api/time-cards", {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ timesheet_id: ts.id,
+ user_id: userId,
+ entry_date: sessionForm.entryDate,
+ start_time: sessionForm.startTime,
+ end_time: sessionForm.endTime,
+ hours_worked: sessionForm.minutesWorked,
+ task: finalTask,
+ work_type: sessionForm.workType,
+ billable: sessionForm.billable,
+ description: sessionForm.description,
+ short_description: finalShortDesc,
+ notes: sessionForm.notes,
+ status: 'Draft',
+ ticket_number: ticket?.number || null,
+ ticket_id: id,
+ is_system_generated: 1
+ })
+ });
+
+ if (response.ok) {
+ setPostMessage({ text:"Session activity details saved successfully! Calendar entry created.", type: 'success' });
+ setTimeout(() => setPostMessage(null), 3000);
+ setShowSessionPopup(false);
+ } else {
+ alert("Failed to save activity details.");
+ }
+ } catch (e) {
+ console.error(e);
+ alert("Error saving session details.");
+ } finally {
+ setSavingSession(false);
+ }
+ };
+
+ const formatDate = (date: any) => {
+ if (!date) return"-";
+ try {
+ if (typeof date.toDate ==="function") {
+ const d = date.toDate();
+ return isNaN(d.getTime()) ?"-" : d.toLocaleString();
+ }
+ if (typeof date ==="string") {
+ const d = new Date(date);
+ return isNaN(d.getTime()) ?"-" : d.toLocaleString();
+ }
+ if (date.seconds !== undefined) {
+ const d = new Date(Number(date.seconds) * 1000);
+ return isNaN(d.getTime()) ?"-" : d.toLocaleString();
+ }
+ } catch (e) {
+ return"-";
+ }
+ return"-";
+ };
+
+ const [activeTab, setActiveTab] = useState("Notes");
+ const [localPendingType, setLocalPendingType] = useState<SlaDelayResponseType>(null);
+
+ const effectiveSlaDelay = ticket ? getEffectiveSlaDelayState(ticket) : null;
+ const isTicketOwner = !!(ticket && user && (ticket.assignedTo === user.uid || ticket.assignedTo === user.email || ticket.assignedToName === profile?.name));
+ const pendingSlaDelayType: SlaDelayResponseType = !effectiveSlaDelay || !isTicketOwner
+ ? null
+ : effectiveSlaDelay.awaitingRca
+ ?"rca"
+ : effectiveSlaDelay.followUpDue || effectiveSlaDelay.meta.pendingResponseType ==="follow_up"
+ ?"follow_up"
+ : effectiveSlaDelay.awaitingInitialJustification || effectiveSlaDelay.meta.pendingResponseType ==="initial"
+ ?"initial"
+ : null;
+
+ const activePendingType = localPendingType || pendingSlaDelayType;
+
+ useEffect(() => {
+ if (!effectiveSlaDelay) return;
+ setSlaDelayForm((prev) => ({
+ delayReason: effectiveSlaDelay.meta.latestDelayReason || prev.delayReason,
+ progressUpdate: effectiveSlaDelay.meta.latestProgressUpdate || prev.progressUpdate,
+ blockers: effectiveSlaDelay.meta.latestBlockers || prev.blockers,
+ eta: effectiveSlaDelay.meta.latestEta || prev.eta,
+ nextActionPlan: effectiveSlaDelay.meta.nextActionPlan || prev.nextActionPlan,
+ resolutionPercentage: effectiveSlaDelay.meta.resolutionPercentage ? String(effectiveSlaDelay.meta.resolutionPercentage) : prev.resolutionPercentage,
+ rootCauseAnalysis: effectiveSlaDelay.meta.rootCauseAnalysis || prev.rootCauseAnalysis,
+ correctiveActionDetails: effectiveSlaDelay.meta.correctiveActionDetails || prev.correctiveActionDetails,
+ finalResolutionExplanation: effectiveSlaDelay.meta.finalResolutionExplanation || prev.finalResolutionExplanation,
+ dependencyDetails: effectiveSlaDelay.meta.dependencyDetails || prev.dependencyDetails,
+ preventiveAction: effectiveSlaDelay.meta.preventiveAction || prev.preventiveAction,
+ }));
+ }, [effectiveSlaDelay?.meta.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+ const updateSlaDelayField = (field: string, value: string) => {
+ setSlaDelayForm((prev) => ({ ...prev, [field]: value }));
+ };
+
+ const handleSubmitSlaDelay = async () => {
+ if (!ticket || !id || !user || !activePendingType || !effectiveSlaDelay) return;
+
+ const requiredMissing =
+ (activePendingType ==="initial" && (!slaDelayForm.delayReason.trim() || !slaDelayForm.progressUpdate.trim() || !slaDelayForm.eta || !slaDelayForm.nextActionPlan.trim())) ||
+ (activePendingType ==="follow_up" && (!slaDelayForm.progressUpdate.trim() || !slaDelayForm.eta || slaDelayForm.resolutionPercentage ==="")) ||
+ (activePendingType ==="rca" && (!slaDelayForm.rootCauseAnalysis.trim() || !slaDelayForm.dependencyDetails.trim() || !slaDelayForm.correctiveActionDetails.trim() || !slaDelayForm.preventiveAction.trim() || !slaDelayForm.finalResolutionExplanation.trim() || !slaDelayForm.eta || slaDelayForm.resolutionPercentage ===""));
+
+ if (requiredMissing) {
+ alert("Please complete all mandatory SLA accountability fields before continuing.");
+ return;
+ }
+
+ setSlaDelaySaving(true);
+ try {
+ const nowIso = new Date().toISOString();
+ const baseMeta: SlaDelayMeta = effectiveSlaDelay.meta.triggeredAt
+ ? effectiveSlaDelay.meta
+ : createDefaultSlaDelayMeta(nowIso, effectiveSlaDelay.usage);
+
+ const responseType = activePendingType;
+ const nextLogs: SlaDelayLogEntry[] = [...effectiveSlaDelay.logs, {
+ id: `submit-${Date.now()}`,
+ type: responseType ==="initial" ?"justification_submitted" : responseType ==="follow_up" ?"follow_up_submitted" :"rca_submitted",
+ timestamp: nowIso,
+ actorId: user.uid,
+ actorName: profile?.name || user.email ||"User",
+ message:
+ responseType ==="initial"
+ ?"Delay justification submitted by the ticket owner."
+ : responseType ==="follow_up"
+ ?"SLA follow-up progress update submitted by the ticket owner."
+ :"SLA breach RCA and corrective action submitted by the ticket owner.",
+ data: {
+ delayReason: slaDelayForm.delayReason,
+ progressUpdate: slaDelayForm.progressUpdate,
+ blockers: slaDelayForm.blockers,
+ eta: slaDelayForm.eta,
+ nextActionPlan: slaDelayForm.nextActionPlan,
+ resolutionPercentage: Number(slaDelayForm.resolutionPercentage || 0),
+ rootCauseAnalysis: slaDelayForm.rootCauseAnalysis,
+ dependencyDetails: slaDelayForm.dependencyDetails,
+ correctiveActionDetails: slaDelayForm.correctiveActionDetails,
+ preventiveAction: slaDelayForm.preventiveAction,
+ finalResolutionExplanation: slaDelayForm.finalResolutionExplanation,
+ }
+ }];
+
+ const nextMeta: SlaDelayMeta = {
+ ...baseMeta,
+ active: !["Resolved","Closed","Canceled"].includes(ticket.status),
+ monitoredSla: effectiveSlaDelay.usage.slaType || baseMeta.monitoredSla,
+ monitoredPercentage: Math.round(effectiveSlaDelay.usage.percentageUsed * 100) / 100,
+ lastSubmittedAt: nowIso,
+ lastRequestedAt: nowIso,
+ awaitingOwnerResponse: false,
+ pendingResponseType: null,
+ nextFollowUpAt: responseType ==="rca" ? null : new Date(Date.now() + baseMeta.followUpIntervalMinutes * 60 * 1000).toISOString(),
+ latestDelayReason: slaDelayForm.delayReason.trim() || baseMeta.latestDelayReason,
+ latestProgressUpdate: slaDelayForm.progressUpdate.trim() || baseMeta.latestProgressUpdate,
+ latestBlockers: slaDelayForm.blockers.trim(),
+ latestEta: slaDelayForm.eta,
+ nextActionPlan: slaDelayForm.nextActionPlan.trim() || baseMeta.nextActionPlan,
+ resolutionPercentage: Number(slaDelayForm.resolutionPercentage || baseMeta.resolutionPercentage || 0),
+ rootCauseAnalysis: slaDelayForm.rootCauseAnalysis.trim() || baseMeta.rootCauseAnalysis,
+ correctiveActionDetails: slaDelayForm.correctiveActionDetails.trim() || baseMeta.correctiveActionDetails,
+ finalResolutionExplanation: slaDelayForm.finalResolutionExplanation.trim() || baseMeta.finalResolutionExplanation,
+ dependencyDetails: slaDelayForm.dependencyDetails.trim() || baseMeta.dependencyDetails,
+ preventiveAction: slaDelayForm.preventiveAction.trim() || baseMeta.preventiveAction,
+ ...(responseType ==="rca" ? {
+ breachReasonSubmittedBy: profile?.name || user.email ||"Unknown",
+ breachReasonSubmittedAt: nowIso,
+ } : {}),
+ rcaRequired: responseType ==="rca" ? false : baseMeta.rcaRequired,
+ correctiveActionRequired: responseType ==="rca" ? false : baseMeta.correctiveActionRequired,
+ latestStatus:"submitted",
+ updatedAt: nowIso,
+ };
+
+ await updateDoc(doc(db,"tickets", id), {
+ slaDelayMeta: nextMeta,
+ slaDelayLogs: nextLogs,
+ updatedAt: serverTimestamp(),
+ ...(responseType ==="rca" ? {
+ resolutionNotes: editedTicket?.resolutionNotes || nextMeta.finalResolutionExplanation,
+ } : {})
+ });
+
+ await fetch(`/api/tickets/${id}/activities`, {
+ method:"POST",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({
+ activity_type: responseType ==="rca" ?"sla_rca" :"sla_follow_up",
+ visibility_type:"internal",
+ created_by: user.uid,
+ created_by_name: profile?.name || user.email,
+ message:
+ responseType ==="initial"
+ ? `Delay justification submitted. ETA updated to ${slaDelayForm.eta}.`
+ : responseType ==="follow_up"
+ ? `SLA follow-up submitted. Resolution progress is ${slaDelayForm.resolutionPercentage || 0}%.`
+ :"SLA breach RCA and corrective action submitted.",
+ metadata_json: {
+ responseType,
+ slaDelayMeta: nextMeta,
+ }
+ })
+ });
+
+ // Notify managers when RCA is submitted
+ if (responseType ==="rca") {
+ try {
+ fetch("/api/notifications/dispatch", {
+ method:"POST",
+ headers: {"Content-Type":"application/json" },
+ body: JSON.stringify({
+ ticket: { id, ticket_number: ticket.number, assigned_to: ticket.assignedTo, assigned_to_name: ticket.assignedToName, status: ticket.status, priority: ticket.priority },
+ actorId: user.uid,
+ actorName: profile?.name || user.email,
+ type:"sla_breach_rca",
+ message: `SLA Breach RCA submitted for ticket ${ticket.number} by ${profile?.name || user.email}.`,
+ })
+ });
+ } catch (e) { /* non-critical */ }
+ }
+
+ setTimelineRefresh((prev) => prev + 1);
+ setLocalPendingType(null);
+ } catch (error: any) {
+ console.error("Failed to submit SLA delay update:", error);
+ alert(`Failed to submit SLA accountability update: ${error.message ||"Unknown error"}`);
+ } finally {
+ setSlaDelaySaving(false);
+ }
+ };
+
+ if (!ticket) return null;
+
+ const createdTime = ticket.createdAt?.seconds 
+ ? new Date(ticket.createdAt.seconds * 1000) 
+ : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt) : new Date());
+
+ const fallbackResponseDeadline = ticket.responseDeadline || 
+ (ticket.createdAt ? calculateSLADeadline(createdTime, 2, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString() : undefined);
+
+ const fallbackResolutionDeadline = ticket.resolutionDeadline || 
+ (ticket.createdAt ? calculateSLADeadline(createdTime, 24, {
+ businessHours: ticket.businessHours,
+ excludeWeekends: ticket.excludeWeekends,
+ excludeHolidays: ticket.excludeHolidays
+ }).toISOString() : undefined);
+
+ const getAiBreachRisk = () => {
+ if (!ticket || ticket.status ==="Resolved" || ticket.status ==="Closed") return null;
+
+ const deadlineStr = ticket.resolutionDeadline;
+ if (!deadlineStr) return null;
+
+ const deadline = new Date(deadlineStr).getTime();
+ const now = Date.now();
+ const createdTimeMs = ticket.createdAt?.seconds 
+ ? ticket.createdAt.seconds * 1000 
+ : (typeof ticket.createdAt === 'string' ? new Date(ticket.createdAt).getTime() : Date.now());
+
+ if (now >= deadline) return { risk:"breached", score: 100, label:"Breached" };
+
+ const totalTime = deadline - createdTimeMs;
+ const timeElapsed = now - createdTimeMs;
+ const ratio = totalTime > 0 ? timeElapsed / totalTime : 0;
+
+ const workloadFactor = ticket.assignedTo ? 1.1 : 1.25;
+
+ const categoryMultipliers: Record<string, number> = {
+"Network": 1.2,
+"Database": 1.15,
+"Software": 1.1,
+"Hardware": 1.05
+ };
+ const catMultiplier = categoryMultipliers[ticket.category ||""] || 1.0;
+
+ const rawScore = ratio * 100 * workloadFactor * catMultiplier;
+ const score = Math.min(99, Math.round(rawScore));
+
+ if (score > 80) return { risk:"high", score, label:"High Risk (AI Predicted)" };
+ if (score > 55) return { risk:"medium", score, label:"Medium Risk (AI Predicted)" };
+ return { risk:"low", score, label:"Low Risk" };
+ };
+
+ const breachRisk = getAiBreachRisk();
+
+ return (
+ <div className="space-y-6 max-w-7xl mx-auto">
+ {/* Header */}
+ <div className="flex items-center justify-between bg-white p-3 border border-border rounded-lg shadow-sm">
+ <div className="flex items-center gap-4">
+ <Button variant="ghost" size="sm" onClick={() => navigate("/tickets")} className="gap-2 h-8 px-2">
+ <ChevronLeft className="w-4 h-4" />
+ </Button>
+ <div className="flex flex-col">
+ <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider leading-none mb-1">Incident</span>
+ <span className="text-sm font-bold leading-none">{ticket.number}</span>
+ </div>
+ {ticket.points > 0 && (
+ <div className="flex items-center gap-1.5 px-2 py-0.5 bg-yellow-400/10 text-yellow-600 border border-yellow-400/20 rounded-full text-[10px] font-semibold uppercase tracking-widest animate-pulse">
+ <Star className="w-3 h-3 fill-current" />
+ {ticket.points} Points Earned
+ </div>
+ )}
+ </div>
+ <div className="flex items-center gap-6">
+ <div className="flex items-center gap-4 border-r border-border pr-6 hidden md:flex">
+ <SLATimer
+ label="Resp SLA"
+ deadline={fallbackResponseDeadline}
+ startTime={ticket.responseSlaStartTime || ticket.createdAt}
+ metAt={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !=="New" ? new Date().toISOString() : undefined)}
+ isPaused={editedTicket?.status ==="On Hold" || editedTicket?.status ==="Waiting for Customer" || editedTicket?.status ==="Awaiting User" || editedTicket?.status ==="Awaiting Vendor"}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ />
+ <SLATimer
+ label="Res SLA"
+ deadline={fallbackResolutionDeadline}
+ startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
+ metAt={ticket.resolvedAt || (editedTicket?.status ==="Resolved" || editedTicket?.status ==="Closed" ? new Date().toISOString() : undefined)}
+ isPaused={editedTicket?.status ==="On Hold" || editedTicket?.status ==="Waiting for Customer" || editedTicket?.status ==="Awaiting User" || editedTicket?.status ==="Awaiting Vendor"}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !=="New" ? new Date().toISOString() : null)}
+ />
+ </div>
+ <div className="flex items-center gap-2">
+ {/* AI Breach Risk Predictor Badge */}
+ {breachRisk && (
+ <div className={cn(
+"flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider border transition-all duration-300",
+ breachRisk.risk ==="high" 
+ ?"bg-red-500/10 text-red-500 border-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.2)] animate-pulse"
+ : breachRisk.risk ==="medium"
+ ?"bg-amber-500/10 text-amber-500 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+ :"bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+ )}>
+ <ShieldAlert className="w-3.5 h-3.5 animate-bounce" />
+ <span>{breachRisk.score}% Breach Risk ({breachRisk.label})</span>
+ </div>
+ )}
+ 
+ {/* AI Status Message */}
+ {aiStatusMessage && (
+ <div className="mr-4 flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
+ <div className="w-2 h-2 bg-sn-green rounded-full animate-ping" />
+ <span className="text-[10px] font-bold text-sn-green uppercase tracking-wider">{aiStatusMessage}</span>
+ </div>
+ )}
+
+ {/* Timer Display */}
+ {isActiveSession && (
+ <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg shadow-sm">
+ <div className="relative">
+ <Clock className="w-4 h-4 text-red-600" />
+ <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-600 rounded-full animate-ping" />
+ </div>
+ <span className="text-sm font-bold text-red-700">
+ {Math.floor(trackerElapsed / 3600).toString().padStart(2, '0')}:
+ {Math.floor((trackerElapsed % 3600) / 60).toString().padStart(2, '0')}:
+ {(trackerElapsed % 60).toString().padStart(2, '0')}
+ </span>
+ </div>
+ )}
+
+ {/* Timer Buttons */}
+ {!isActiveSession ? (
+ <Button
+ size="sm"
+ onClick={handleStartTimer}
+ disabled={aiProcessing}
+ className={cn(
+"h-8 px-4 font-bold text-white shadow-md transition-all duration-300",
+ aiProcessing ?"bg-gray-400 cursor-not-allowed" :"bg-green-600 hover:bg-green-700 hover:shadow-green-200 active:scale-95"
+ )}
+ >
+ {aiProcessing ? (
+ <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
+ ) : (
+ <Play className="w-3 h-3 mr-1.5 fill-current" />
+ )}
+ {aiProcessing ?"Capturing..." :"Start Work Session"}
+ </Button>
+ ) : (
+ <Button
+ size="sm"
+ onClick={handleStopTimer}
+ disabled={aiProcessing}
+ className={cn(
+"h-8 px-4 font-bold text-white shadow-md transition-all duration-300",
+ aiProcessing ?"bg-gray-400 cursor-not-allowed" :"bg-red-600 hover:bg-red-700 hover:shadow-red-200 active:scale-95"
+ )}
+ >
+ {aiProcessing ? (
+ <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
+ ) : (
+ <Square className="w-3 h-3 mr-1.5 fill-current" />
+ )}
+ {aiProcessing ?"Analyzing..." :"Stop Work Session"}
+ </Button>
+ )}
+
+
+
+ <Button variant="outline" size="sm" onClick={handleUpdate} disabled={isUpdating} className="h-8 px-4 font-bold border-border bg-white text-sn-dark">Update</Button>
+ <Button size="sm" onClick={handleUpdate} disabled={isUpdating} className="h-8 px-4 font-bold bg-sn-green text-sn-dark shadow-sm hover:bg-sn-green/90 transition-all hover:shadow-sn-green/20">Submit</Button>
+ </div>
+ </div>
+ </div>
+
+ {/* SLA Breach RCA Banner */}
+ {(effectiveSlaDelay?.usage.breached || effectiveSlaDelay?.meta.latestStatus ==="breached") && !(effectiveSlaDelay?.meta.breachReasonSubmittedAt || effectiveSlaDelay?.meta.rootCauseAnalysis?.trim()) && (
+ <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between shadow-sm animate-pulse">
+ <div className="flex items-center gap-3">
+ <ShieldAlert className="w-5 h-5 text-red-600" />
+ <div>
+ <p className="text-xs font-bold text-red-800">SLA Breach RCA Required</p>
+ <p className="text-[11px] text-red-600">This ticket has breached its SLA. As the ticket owner, you must submit a Root Cause Analysis before resolving or closing it.</p>
+ </div>
+ </div>
+ {isTicketOwner && (
+ <Button
+ variant="outline"
+ size="sm"
+ onClick={() => setLocalPendingType("rca")}
+ className="border-red-200 hover:bg-red-50 text-red-700 font-semibold text-[11px] h-8"
+ >
+ Provide RCA
+ </Button>
+ )}
+ </div>
+ )}
+
+ {/* Main Form Section */}
+ <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+ <div className="bg-white border border-border rounded-lg shadow-sm p-6">
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
+ <div className="space-y-4">
+ {/* Number */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Number</label>
+ <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8" value={ticket.number} />
+ </div>
+
+ {/* Reporting User */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Reporting User</label>
+ <div className="col-span-2 flex gap-1">
+ <input readOnly className="flex-grow p-1.5 bg-muted/30 border border-border rounded text-xs h-8" value={ticket.caller || ''} />
+ <Button variant="outline" size="sm" className="h-8 w-8 p-0"><Search className="w-3 h-3" /></Button>
+ </div>
+ </div>
+
+ {/* Affected User */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Affected User</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.affectedUser ||""}
+ onChange={(e) => updateLocalField("affectedUser", e.target.value)}
+ className={cn(
+"flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
+ </div>
+ </div>
+
+ {/* Watch list */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Watch list</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.watchList ||""}
+ onChange={(e) => updateLocalField("watchList", e.target.value)}
+ placeholder="Separate emails with commas"
+ className={cn(
+"flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Users className="w-3 h-3" /></Button>
+ </div>
+ </div>
+
+ {/* Business Phone */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Business phone</label>
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.businessPhone ||""}
+ onChange={(e) => updateLocalField("businessPhone", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ </div>
+
+ {/* Location */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Location</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.location ||""}
+ onChange={(e) => updateLocalField("location", e.target.value)}
+ className={cn(
+"flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
+ </div>
+ </div>
+
+ {/* Category */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Category</label>
+ <select
+ disabled={!canEdit}
+ value={editedTicket?.categoryId ||""}
+ onChange={(e) => {
+ const category = visibleCategories.find((item) => item.id === e.target.value);
+ setEditedTicket((prev: any) => ({ ...prev, categoryId: e.target.value, category: category?.name ||"", subcategoryId:"", subcategory:"", serviceId:"", service:"", serviceProvider:"", assignmentGroup:"" }));
+ }}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ >
+ {visibleCategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+ </select>
+ </div>
+
+ {/* Subcategory */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Subcategory</label>
+ <select
+ disabled={!canEdit || !editedTicket?.categoryId}
+ value={editedTicket?.subcategoryId ||""}
+ onChange={(e) => {
+ const subcategory = visibleSubcategories.find((item) => item.id === e.target.value);
+ setEditedTicket((prev: any) => ({ ...prev, subcategoryId: e.target.value, subcategory: subcategory?.name ||"", serviceId:"", service:"", serviceProvider:"", assignmentGroup:"" }));
+ }}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors disabled:opacity-50 disabled:bg-muted bg-white",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ >
+ <option value="">-- Select Subcategory --</option>
+ {visibleSubcategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+ </select>
+ </div>
+
+ {/* Service */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Service</label>
+ <select
+ disabled={!canEdit || !editedTicket?.subcategoryId}
+ value={editedTicket?.serviceId ||""}
+ onChange={(e) => {
+ const provider = visibleProviders.find((item) => item.id === e.target.value);
+ setEditedTicket((prev: any) => ({ ...prev, serviceId: e.target.value, service: provider?.name ||"", serviceProvider: provider?.name ||"", assignmentGroup:"" }));
+ }}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors disabled:opacity-50 disabled:bg-muted bg-white",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ >
+ <option value="">-- Select Service --</option>
+ {visibleProviders.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+ </select>
+ </div>
+
+ {/* Incident Category Dynamic Custom Dropdowns */}
+ {(["admin","super_admin","ultra_super_admin"].includes(profile?.role ||"") ||
+ ["arun.g@technosprint.net","swedhasris@gmail.com","ulter@technosprint.net","admin@technosprint.net","admin@connectit.local","demo-admin@connectit.local","demo-super_admin@connectit.local","demo-ultra_super_admin@connectit.local"].includes(user?.email || profile?.email ||"")) && (
+ <>
+ {dynamicFields.map((field) => {
+ const fieldOptions = dynamicOptions[field.id] || [];
+ return (
+ <div key={field.id} className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
+ <span className="text-red-500 font-bold">*</span> {field.name}
+ </label>
+ <select
+ value={editedTicket?.customFields?.[field.id] ||""}
+ onChange={e => {
+ setEditedTicket((prev: any) => ({
+ ...prev,
+ customFields: {
+ ...(prev?.customFields || {}),
+ [field.id]: e.target.value
+ }
+ }));
+ }}
+ className="col-span-2 p-1.5 border border-border rounded text-xs focus:ring-1 focus:ring-sn-green outline-none h-8 bg-white"
+ required
+ >
+ <option value="">Select {field.name}</option>
+ {fieldOptions.map((opt: any) => (
+ <option key={opt.id} value={opt.value_text}>{opt.value_text}</option>
+ ))}
+ </select>
+ </div>
+ );
+ })}
+ {dynamicFields.length === 0 && (
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">
+ Incident Category
+ </label>
+ <select
+ disabled
+ className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 bg-muted/20"
+ >
+ <option>No dynamic custom categories defined</option>
+ </select>
+ </div>
+ )}
+ </>
+ )}
+
+ {/* Configuration Item */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Configuration item</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.configurationItem ||""}
+ onChange={(e) => updateLocalField("configurationItem", e.target.value)}
+ className={cn(
+"flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
+ </div>
+ </div>
+
+ {/* Computer Name */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Computer Name</label>
+ <div className="col-span-2 flex gap-1">
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.computerName ||""}
+ onChange={(e) => updateLocalField("computerName", e.target.value)}
+ className={cn(
+"flex-grow p-1.5 border border-border rounded text-xs outline-none focus:ring-1 focus:ring-sn-green h-8",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
+ </div>
+ </div>
+
+ {/* Impact */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Impact</label>
+ <select
+ disabled={!canEdit}
+ value={editedTicket?.impact ||""}
+ onChange={(e) => updateLocalField("impact", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green transition-colors",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ >
+ <option>1 - High</option>
+ <option>2 - Medium</option>
+ <option>3 - Low</option>
+ </select>
+ </div>
+
+ {/* Urgency */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Urgency</label>
+ <select
+ disabled={!canEdit}
+ value={editedTicket?.urgency ||""}
+ onChange={(e) => updateLocalField("urgency", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs h-8 outline-none focus:ring-1 focus:ring-sn-green transition-colors",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ >
+ <option>1 - High</option>
+ <option>2 - Medium</option>
+ <option>3 - Low</option>
+ </select>
+ </div>
+
+ {/* Priority */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Priority</label>
+ <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs font-bold text-blue-600 h-8" value={editedTicket?.priority ||""} />
+ </div>
+
+ {/* Knowledge Article Used */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Knowledge Article Used?</label>
+ <input
+ disabled={!canEdit}
+ type="checkbox"
+ checked={editedTicket?.knowledgeArticleUsed || false}
+ onChange={(e) => updateLocalField("knowledgeArticleUsed", e.target.checked as any)}
+ className="w-4 h-4 accent-sn-green"
+ />
+ </div>
+ </div>
+
+ <div className="space-y-4">
+ {/* Opened */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened</label>
+ <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8" value={formatDate(ticket.createdAt)} />
+ </div>
+
+ {/* Opened by */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Opened by</label>
+ <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8" value={ticket.createdByName || ticket.createdByEmail || ticket.createdBy || '-'} />
+ </div>
+
+ {/* State */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">State</label>
+ <select disabled={!canEdit} value={editedTicket?.status ||""} onChange={(e) => updateLocalField("status", e.target.value)} className={cn("col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 transition-colors", canEdit ?"bg-white" :"bg-muted/30")}>
+ {["New","In Progress","On Hold","Awaiting User","Awaiting Vendor","Resolved","Closed","Canceled"].map(s => <option key={s} value={s}>{s}</option>)}
+ </select>
+ </div>
+
+ {/* Pause Reason Selector */}
+ {(["On Hold","Awaiting User","Awaiting Vendor"].includes(editedTicket?.status ||"") || ticket?.onHoldReason) && (
+ <div className="grid grid-cols-3 items-center gap-4 animate-in fade-in duration-200">
+ <label className="text-[11px] text-right font-semibold text-amber-500 uppercase leading-tight flex items-center justify-end gap-1">
+ <span className="text-amber-500">*</span> Pause Reason
+ </label>
+ <select
+ disabled={!canEdit}
+ value={editedTicket?.onHoldReason || ticket?.onHoldReason ||""}
+ onChange={(e) => updateLocalField("onHoldReason", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border rounded text-xs outline-none h-8 transition-colors",
+ canEdit
+ ?"bg-amber-50/10 dark:bg-amber-950/10 border-amber-500/30 text-amber-600 dark:text-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+ :"bg-muted/30 border-border text-amber-600 dark:text-amber-400"
+ )}
+ >
+ <option value="" className="text-muted-foreground">-- Select Pause Reason --</option>
+ <option value="Awaiting Customer Action">Awaiting Customer Action</option>
+ <option value="Awaiting 3rd Party Vendor">Awaiting 3rd Party Vendor</option>
+ <option value="Awaiting Internal Approval">Awaiting Internal Approval</option>
+ <option value="Awaiting Hardware/Software Delivery">Awaiting Hardware/Software Delivery</option>
+ <option value="Other / Pending Inquiry">Other / Pending Inquiry</option>
+ </select>
+ </div>
+ )}
+
+ {/* Assignment group */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assignment group</label>
+ <div className="col-span-2 flex gap-1">
+ <select disabled={!canEdit} className={cn("flex-grow p-1.5 border border-border rounded text-xs outline-none h-8 focus:ring-1 focus:ring-sn-green", canEdit ?"bg-white" :"bg-muted/30")} value={editedTicket?.assignmentGroup ||""} onChange={(e) => updateLocalField("assignmentGroup", e.target.value)}>
+ <option value="">-- None --</option>
+ {editedTicket?.assignmentGroup && !visibleGroups.some(g => g.name === editedTicket.assignmentGroup) && (
+ <option value={editedTicket.assignmentGroup}>{editedTicket.assignmentGroup}</option>
+ )}
+ {(visibleGroups.length > 0 ? visibleGroups : groups.filter(g => g.status === 'active')).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+ </select>
+ <Button variant="outline" size="sm" className="h-8 w-8 p-0" disabled={!canEdit}><Search className="w-3 h-3" /></Button>
+ </div>
+ </div>
+
+ {/* Assigned to */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Assigned to</label>
+ <div className="col-span-2 flex gap-1">
+ <select disabled={!canEdit} className={cn("flex-grow p-1.5 border border-border rounded text-xs outline-none h-8 focus:ring-1 focus:ring-sn-green", canEdit ?"bg-white" :"bg-muted/30")} value={editedTicket?.assignedTo ||""} onChange={(e) => updateLocalField("assignedTo", e.target.value)}>
+ <option value="">-- None --</option>
+ {editedTicket?.assignedTo && !filteredAgents.some(a => a.id === editedTicket.assignedTo || a.uid === editedTicket.assignedTo) && (
+ <option value={editedTicket.assignedTo}>{editedTicket.assignedToName || editedTicket.assignedTo} (Current)</option>
+ )}
+ {filteredAgents.map(agent => (
+ <option key={agent.id} value={agent.uid || agent.id}>
+ {agent.name || agent.email}
+ </option>
+ ))}
+ </select>
+ <Button
+ variant="outline"
+ size="sm"
+ className="h-8 px-2 bg-sn-green/10 text-sn-green border-sn-green/20 hover:bg-sn-green/20"
+ title="Auto-Assign"
+ disabled={!canEdit}
+ onClick={() => {
+ if (filteredAgents.length === 0) return;
+ const leastLoaded = [...filteredAgents].sort((a, b) => (a.currentWorkload || 0) - (b.currentWorkload || 0))[0];
+ updateLocalField("assignedTo", leastLoaded.uid || leastLoaded.id);
+ updateLocalField("assignedToName", leastLoaded.name || leastLoaded.email);
+ }}
+ >
+ <Zap className="w-3.5 h-3.5" />
+ </Button>
+ </div>
+ </div>
+
+ {/* Original Assignment Group */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Original Assignment Group</label>
+ <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
+ value={editedTicket?.originalAssignmentGroup || editedTicket?.assignmentGroup ||""}
+ />
+ </div>
+
+ {/* Acknowledged */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Acknowledged</label>
+ <input
+ disabled={!canEdit}
+ type="checkbox"
+ checked={editedTicket?.acknowledged || false}
+ onChange={(e) => updateLocalField("acknowledged", e.target.checked as any)}
+ className="w-4 h-4 accent-sn-green"
+ />
+ </div>
+
+ {/* Channel */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Channel</label>
+ <select
+ disabled={!canEdit}
+ value={editedTicket?.channel ||"Self-service"}
+ onChange={(e) => updateLocalField("channel", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ >
+ <option>Self-service</option>
+ <option>Email</option>
+ <option>Phone</option>
+ <option>Chat</option>
+ <option>Portal</option>
+ </select>
+ </div>
+
+ {/* Password Reset? */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Password Reset?</label>
+ <select
+ disabled={!canEdit}
+ value={editedTicket?.passwordReset ||"No"}
+ onChange={(e) => updateLocalField("passwordReset", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ >
+ <option>No</option>
+ <option>Yes</option>
+ </select>
+ </div>
+
+ {/* Rackspace Ticket No */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Rackspace Ticket No</label>
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.rackspaceTicketNo ||""}
+ onChange={(e) => updateLocalField("rackspaceTicketNo", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ </div>
+
+ {/* Additional Information */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Additional Information</label>
+ <input
+ readOnly={!canEdit}
+ value={editedTicket?.additionalInformation ||""}
+ onChange={(e) => updateLocalField("additionalInformation", e.target.value)}
+ className={cn(
+"col-span-2 p-1.5 border border-border rounded text-xs h-8 focus:ring-1 focus:ring-sn-green",
+ canEdit ?"bg-white" :"bg-muted/30"
+ )}
+ />
+ </div>
+
+ {/* SLA due */}
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">SLA due</label>
+ <input readOnly className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs h-8"
+ value={formatDate(ticket.resolutionDeadline)}
+ />
+ </div>
+ </div>
+
+ <div className="col-span-1 md:col-span-2 mt-4 space-y-4">
+ <div className="grid grid-cols-6 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Short description</label>
+ <input readOnly={!canEdit} className={cn("col-span-5 p-1.5 border border-border rounded text-xs outline-none h-8", canEdit ?"bg-white" :"bg-muted/30")} value={editedTicket?.title ||""} onChange={(e) => updateLocalField("title", e.target.value)} />
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ {/* Tabs Section */}
+ <div className="bg-white border border-border rounded-lg shadow-sm overflow-hidden mt-6">
+ {/* Tab Headers */}
+ <div className="flex bg-muted/30 border-b border-border">
+ {["Notes","Related Records","Resolution Information","SLA Monitoring","Work Sessions"].map((tab) => (
+ <button
+ key={tab}
+ type="button"
+ onClick={() => setActiveTab(tab)}
+ className={cn(
+"px-6 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-r border-border h-full",
+ activeTab === tab
+ ?"bg-white text-sn-dark border-b-white -mb-px"
+ :"text-muted-foreground hover:bg-white/50"
+ )}
+ >
+ {tab}
+ </button>
+ ))}
+ <div className="flex-grow border-b border-border"></div>
+ </div>
+
+ {/* Tab Content */}
+ <div className="p-6">
+ {activeTab ==="Work Sessions" ? (
+ <div className="space-y-6">
+ <div className="flex items-center justify-between mb-4">
+ <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700">Ticket Work Sessions</h3>
+ {isActiveSession && (
+ <span className="flex items-center gap-2 text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full border border-green-200">
+ <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> Active Session
+ </span>
+ )}
+ </div>
+
+ {isActiveSession && trackerEntries.length > 0 && (
+ <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 mb-6">
+ <h4 className="text-xs font-bold text-blue-800 mb-3 uppercase tracking-wider">Current Session Activity</h4>
+ <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+ {trackerEntries.map((entry, idx) => (
+ <div key={idx} className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+ <div className="flex items-center gap-2 mb-2">
+ <span className="text-xl">{entry.appIcon}</span>
+ <span className="text-xs font-bold text-slate-700 truncate">{entry.appName}</span>
+ <span className="text-[10px] text-slate-400 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+ </div>
+ {entry.screenshotDataUrl && (
+ <img src={entry.screenshotDataUrl} alt="Screenshot" className="w-full h-24 object-cover rounded mb-2 border border-slate-100" />
+ )}
+ <p className="text-[10px] text-slate-600 leading-tight line-clamp-3">{entry.description}</p>
+ </div>
+ ))}
+ </div>
+ </div>
+ )}
+
+ {pastSessions.length === 0 ? (
+ <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+ <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+ <p className="text-sm font-medium text-slate-500">No work sessions recorded for this ticket.</p>
+ <p className="text-xs text-slate-400 mt-1">Start a work session to track your time and capture AI context.</p>
+ </div>
+ ) : (
+ <div className="space-y-4">
+ {pastSessions.map((session, idx) => (
+ <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+ <div className="flex items-center justify-between mb-3">
+ <div className="flex items-center gap-3">
+ <div className="bg-slate-100 text-slate-600 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs">
+ #{pastSessions.length - idx}
+ </div>
+ <div>
+ <p className="text-sm font-bold text-slate-800">{new Date(session.start_time).toLocaleString()}</p>
+ <p className="text-xs text-slate-500">
+ Logged by {session.user_name ||"Agent"} • 
+ <span className="ml-1 text-blue-600 font-semibold">
+ {Math.floor(session.duration / 3600).toString().padStart(2, '0')}:
+ {Math.floor((session.duration % 3600) / 60).toString().padStart(2, '0')}:
+ {(session.duration % 60).toString().padStart(2, '0')}
+ </span>
+ </p>
+ </div>
+ </div>
+ <span className={cn(
+"text-[10px] px-2 py-1 rounded-md font-bold uppercase tracking-wider",
+ session.status === 'completed' ?"bg-slate-100 text-slate-600" :"bg-green-100 text-green-700"
+ )}>
+ {session.status}
+ </span>
+ </div>
+ 
+ {session.status === 'completed' && (
+ <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 mt-2">
+ <p className="text-xs text-slate-600 font-medium mb-1 uppercase tracking-wider">AI Summary</p>
+ <p className="text-sm text-slate-800 leading-relaxed italic">
+ Activity captured successfully. Full AI summary details and screenshots are accessible in the Timesheet module.
+ </p>
+ </div>
+ )}
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ ) : activeTab ==="Notes" ? (
+ <div className="space-y-6">
+ {/* Toast Notification */}
+ {postMessage && (
+ <div className={cn(
+"flex items-center gap-2 p-3 rounded-lg text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-300",
+ postMessage.type === 'success' ?"bg-green-50 text-green-700 border border-green-200" :"bg-red-50 text-red-700 border border-red-200"
+ )}>
+ {postMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+ {postMessage.text}
+ </div>
+ )}
+
+ {/* Dual-Note Input Section */}
+ <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+ {/* Work Notes (Internal/Private) */}
+ <div className="rounded-lg border-2 border-amber-200 bg-gradient-to-br from-amber-50/80 to-yellow-50/30 overflow-hidden">
+ <div className="px-4 py-2.5 bg-amber-100/60 border-b border-amber-200 flex items-center justify-between">
+ <div className="flex items-center gap-2">
+ <Lock className="w-3.5 h-3.5 text-amber-600" />
+ <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Work Notes</span>
+ <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-800 font-bold uppercase">Internal Only</span>
+ </div>
+ </div>
+ <div className="p-4">
+ <textarea
+ value={workNote}
+ onChange={(e) => setWorkNote(e.target.value)}
+ placeholder="Type internal work notes here... (visible only to agents)"
+ className="w-full p-3 border border-amber-200 rounded-md text-xs outline-none focus:ring-2 focus:ring-amber-300 min-h-[120px] resize-none bg-white/80 placeholder:text-amber-400"
+ />
+ <div className="flex items-center justify-between mt-3">
+ <div className="flex items-center gap-4">
+ <span className="text-[9px] text-amber-600 font-medium flex items-center gap-1">
+ <Lock className="w-3 h-3" /> Not visible to customer
+ </span>
+ <label className="flex items-center gap-1.5 text-[10px] text-amber-700 font-semibold cursor-pointer select-none">
+ <input
+ type="checkbox"
+ checked={emailWorkNote}
+ onChange={(e) => setEmailWorkNote(e.target.checked)}
+ className="w-3.5 h-3.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500 accent-amber-500"
+ />
+ Email Note
+ </label>
+ </div>
+ <Button
+ type="button"
+ size="sm"
+ disabled={!workNote.trim() || isPosting}
+ onClick={(e) => handleAddWorkNote(e)}
+ className="bg-amber-500 hover:bg-amber-600 text-white font-bold gap-1.5 h-8 px-4 shadow-sm disabled:opacity-50 transition-all"
+ >
+ {isPosting ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-3 h-3" />}
+ Post Work Note
+ </Button>
+ </div>
+ </div>
+ </div>
+
+ {/* Additional Comments (External/Customer Visible) */}
+ <div className="rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50/80 to-slate-50/30 overflow-hidden">
+ <div className="px-4 py-2.5 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
+ <div className="flex items-center gap-2">
+ <Globe className="w-3.5 h-3.5 text-blue-600" />
+ <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Additional Comments</span>
+ <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-200 text-blue-800 font-bold uppercase">Customer Visible</span>
+ </div>
+ </div>
+ <div className="p-4">
+ <textarea
+ value={newComment}
+ onChange={(e) => setNewComment(e.target.value)}
+ placeholder="Type comments visible to the customer here..."
+ className="w-full p-3 border border-blue-200 rounded-md text-xs outline-none focus:ring-2 focus:ring-blue-300 min-h-[120px] resize-none bg-white/80 placeholder:text-blue-400"
+ />
+ <div className="flex items-center justify-between mt-3">
+ <div className="flex items-center gap-4">
+ <span className="text-[9px] text-blue-600 font-medium flex items-center gap-1">
+ <Globe className="w-3 h-3" /> Visible to customer
+ </span>
+ <label className="flex items-center gap-1.5 text-[10px] text-blue-700 font-semibold cursor-pointer select-none">
+ <input
+ type="checkbox"
+ checked={emailComment}
+ onChange={(e) => setEmailComment(e.target.checked)}
+ className="w-3.5 h-3.5 rounded border-blue-300 text-blue-600 focus:ring-blue-500 accent-blue-500"
+ />
+ Email Note
+ </label>
+ </div>
+ <Button
+ type="button"
+ size="sm"
+ disabled={!newComment.trim() || isPosting}
+ onClick={(e) => handleAddComment(e)}
+ className="bg-blue-600 hover:bg-blue-700 text-white font-bold gap-1.5 h-8 px-4 shadow-sm disabled:opacity-50 transition-all"
+ >
+ {isPosting ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-3 h-3" />}
+ Post Comment
+ </Button>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ {/* Activity Timeline (API-backed) */}
+ <ActivityTimeline
+ ticketId={id || ''}
+ createdAt={ticket.createdAt}
+ refreshTrigger={timelineRefresh}
+ userRole={profile?.role}
+ />
+ </div>
+ ) : activeTab ==="Related Records" ? (
+ <div className="space-y-8 animate-in fade-in duration-300">
+ {/* Task SLAs Section */}
+ <div className="space-y-4">
+ <div className="flex items-center justify-between border-b border-border pb-2">
+ <div className="flex items-center gap-2">
+ <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+ <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Service Level Agreements</h3>
+ </div>
+ </div>
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+ <SLATimer
+ label="Response"
+ deadline={fallbackResponseDeadline}
+ metAt={ticket.firstResponseAt}
+ startTime={ticket.responseSlaStartTime || ticket.createdAt}
+ isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ />
+ <SLATimer
+ label="Resolution"
+ deadline={fallbackResolutionDeadline}
+ metAt={ticket.resolvedAt}
+ startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
+ waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !=="New" ? new Date().toISOString() : null)}
+ isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ />
+ </div>
+ </div>
+
+ {/* Other Related Records */}
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+ <div className="space-y-4">
+ <div className="flex items-center justify-between border-b border-border pb-2">
+ <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Parent Incident</h3>
+ </div>
+ <div className="p-4 bg-muted/10 rounded border border-border border-dashed text-center">
+ <p className="text-[10px] text-muted-foreground uppercase font-bold">No Parent Incident</p>
+ </div>
+ </div>
+ <div className="space-y-4">
+ <div className="flex items-center justify-between border-b border-border pb-2">
+ <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Child Incidents</h3>
+ </div>
+ <div className="p-4 bg-muted/10 rounded border border-border border-dashed text-center">
+ <p className="text-[10px] text-muted-foreground uppercase font-bold">No Child Incidents</p>
+ </div>
+ </div>
+ </div>
+ </div>
+ ) : activeTab ==="SLA Monitoring" ? (
+ <div className="space-y-6 animate-in fade-in duration-300">
+ <div className="flex items-center justify-between">
+ <h3 className="text-sm font-bold uppercase tracking-widest text-slate-700">Detailed SLA Analytics</h3>
+ <div className="flex gap-2">
+ <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded text-[9px] font-semibold border border-emerald-100 uppercase tracking-tighter">L1 Escalation: 80%</div>
+ <div className="px-3 py-1 bg-orange-50 text-orange-700 rounded text-[9px] font-semibold border border-orange-100 uppercase tracking-tighter">L2 Escalation: 90%</div>
+ <div className="px-3 py-1 bg-red-50 text-red-700 rounded text-[9px] font-semibold border border-red-100 uppercase tracking-tighter">Breach: 100%</div>
+ </div>
+ </div>
+
+ <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+ <div className="space-y-4">
+ <div className="flex items-center justify-between">
+ <span className="text-[11px] font-semibold uppercase text-slate-500">Response Performance</span>
+ <span className="text-xs font-bold text-slate-700">Target: {ticket.responseDeadline ? new Date(ticket.responseDeadline).toLocaleTimeString() : '--'}</span>
+ </div>
+ <SLATimer
+ label="Live Response"
+ deadline={fallbackResponseDeadline}
+ metAt={ticket.firstResponseAt}
+ startTime={ticket.responseSlaStartTime || ticket.createdAt}
+ isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ />
+ <div className="p-3 bg-white rounded-lg border border-slate-200 text-[10px] text-slate-500 italic">
+ The Response SLA tracks the time from ticket creation until the first meaningful update by an agent.
+ </div>
+ </div>
+
+ <div className="space-y-4">
+ <div className="flex items-center justify-between">
+ <span className="text-[11px] font-semibold uppercase text-slate-500">Resolution Performance</span>
+ <span className="text-xs font-bold text-slate-700">Target: {fallbackResolutionDeadline ? new Date(fallbackResolutionDeadline).toLocaleTimeString() : '--'}</span>
+ </div>
+ <SLATimer
+ label="Live Resolution"
+ deadline={fallbackResolutionDeadline}
+ metAt={ticket.resolvedAt}
+ startTime={ticket.resolutionSlaStartTime || ticket.createdAt}
+ waitUntil={ticket.firstResponseAt || (editedTicket?.status && editedTicket.status !=="New" ? new Date().toISOString() : null)}
+ isPaused={ticket.status === 'On Hold' || ticket.status === 'Awaiting User' || ticket.status === 'Awaiting Vendor' || ticket.status === 'Waiting for Customer'}
+ onHoldStart={ticket.onHoldStart}
+ totalPausedTime={ticket.totalPausedTime}
+ />
+ <div className="p-3 bg-white rounded-lg border border-slate-200 text-[10px] text-slate-500 italic">
+ The Resolution SLA starts after the first response and tracks the total time until the incident is marked as Resolved.
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <div className="space-y-4">
+ <h4 className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">SLA Transition History</h4>
+ <div className="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+ <table className="w-full text-left text-xs bg-white">
+ <thead className="bg-slate-50 font-bold text-slate-600 border-b border-slate-200">
+ <tr>
+ <th className="p-3 uppercase tracking-tighter">Event Description</th>
+ <th className="p-3 uppercase tracking-tighter">Timestamp</th>
+ <th className="p-3 uppercase tracking-tighter">Actor</th>
+ <th className="p-3 uppercase tracking-tighter">Audit Link</th>
+ </tr>
+ </thead>
+ <tbody className="divide-y divide-slate-100">
+ {ticket.history?.filter((h: any) => h.action.includes('SLA') || h.action.includes('Breach')).map((h: any, i: number) => (
+ <tr key={i} className="hover:bg-slate-50/50">
+ <td className="p-3">
+ <div className="flex items-center gap-2">
+ <div className={cn("w-1.5 h-1.5 rounded-full", h.action.includes('Breach') ?"bg-red-500" :"bg-blue-500")} />
+ <span className="font-semibold text-slate-700">{h.action}</span>
+ </div>
+ </td>
+ <td className="p-3 text-slate-500">{new Date(h.timestamp).toLocaleString()}</td>
+ <td className="p-3 text-slate-600 font-medium">{h.user}</td>
+ <td className="p-3">
+ <span className="text-[10px] text-blue-600 font-bold cursor-pointer hover:underline uppercase tracking-tighter">Verify Log</span>
+ </td>
+ </tr>
+ ))}
+ </tbody>
+ </table>
+ </div>
+ </div>
+
+ {effectiveSlaDelay?.meta.breachReasonSubmittedAt && (
+ <div className="mt-6 bg-red-50/50 border border-red-200 rounded-xl p-6 shadow-sm animate-in fade-in duration-300">
+ <div className="flex items-center gap-2.5 mb-4 border-b border-red-100 pb-3">
+ <ShieldAlert className="w-5 h-5 text-red-600" />
+ <div>
+ <h4 className="text-sm font-bold text-slate-800">SLA Breach Reason & RCA</h4>
+ <p className="text-[11px] text-slate-500">
+ Submitted by <span className="font-semibold">{effectiveSlaDelay.meta.breachReasonSubmittedBy}</span> on {new Date(effectiveSlaDelay.meta.breachReasonSubmittedAt).toLocaleString()}
+ </p>
+ </div>
+ </div>
+
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+ <div className="space-y-1">
+ <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Root Cause Analysis</span>
+ <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
+ {effectiveSlaDelay.meta.rootCauseAnalysis ||"N/A"}
+ </p>
+ </div>
+
+ <div className="space-y-1">
+ <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dependencies & Blockers</span>
+ <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
+ {effectiveSlaDelay.meta.dependencyDetails ||"N/A"}
+ </p>
+ </div>
+
+ <div className="space-y-1">
+ <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Corrective Action Taken</span>
+ <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
+ {effectiveSlaDelay.meta.correctiveActionDetails ||"N/A"}
+ </p>
+ </div>
+
+ <div className="space-y-1">
+ <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Preventive Action Plan</span>
+ <p className="text-xs text-slate-700 bg-white p-3 rounded-lg border border-slate-200/60 min-h-[60px] whitespace-pre-wrap">
+ {effectiveSlaDelay.meta.preventiveAction ||"N/A"}
+ </p>
+ </div>
+ </div>
+ </div>
+ )}
+ </div>
+ ) : activeTab ==="Resolution Information" ? (
+ <div className="animate-in fade-in duration-300">
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-6">
+ <div className="space-y-4">
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase">Knowledge</label>
+ <div className="col-span-2 flex items-center gap-2">
+ <input type="checkbox" className="w-3.5 h-3.5 rounded" />
+ <span className="text-[10px] text-muted-foreground uppercase font-bold">Knowledge base</span>
+ </div>
+ </div>
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolution code</label>
+ <select
+ value={editedTicket?.resolutionCode ||""}
+ onChange={(e) => updateLocalField("resolutionCode", e.target.value)}
+ className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8 font-semibold text-blue-600"
+ >
+ <option value="">-- None --</option>
+ {[
+"Permanent Fix Applied",
+"Temporary Workaround Provided",
+"Configuration Change",
+"Software Patch Applied",
+"Hardware Replaced",
+"Access / Permission Corrected",
+"Network Issue Resolved",
+"User Guidance Provided",
+"Third-Party Vendor Resolution",
+"Monitoring / No Issue Found",
+"Auto Resolved",
+"Duplicate Ticket",
+"Cancelled by User",
+"Cannot Reproduce",
+"No Response from User"
+ ].map(code => (
+ <option key={code} value={code}>{code}</option>
+ ))}
+ {/* Backward compatibility for old codes */}
+ {editedTicket?.resolutionCode && ![
+"Permanent Fix Applied",
+"Temporary Workaround Provided",
+"Configuration Change",
+"Software Patch Applied",
+"Hardware Replaced",
+"Access / Permission Corrected",
+"Network Issue Resolved",
+"User Guidance Provided",
+"Third-Party Vendor Resolution",
+"Monitoring / No Issue Found",
+"Auto Resolved",
+"Duplicate Ticket",
+"Cancelled by User",
+"Cannot Reproduce",
+"No Response from User"
+ ].includes(editedTicket.resolutionCode) && (
+ <option value={editedTicket.resolutionCode}>{editedTicket.resolutionCode} (Legacy)</option>
+ )}
+ </select>
+ </div>
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolution method</label>
+ <select
+ value={editedTicket?.resolutionMethod ||""}
+ onChange={(e) => updateLocalField("resolutionMethod", e.target.value)}
+ className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8"
+ >
+ <option value="">-- None --</option>
+ {[
+"Remote Support",
+"Onsite Support",
+"Phone Support",
+"Email Support",
+"Chat Support",
+"Self-Service",
+"Automated Resolution",
+"Third-Party Vendor",
+"Field Engineer Visit"
+ ].map(method => (
+ <option key={method} value={method}>{method}</option>
+ ))}
+ </select>
+ </div>
+ {(editedTicket?.resolutionCode ==="Duplicate Ticket" ||
+ editedTicket?.resolutionCode ==="Cancelled by User" ||
+ editedTicket?.resolutionCode ==="Cannot Reproduce" ||
+ editedTicket?.resolutionCode ==="No Response from User") && (
+ <div className="grid grid-cols-3 items-center gap-4 animate-in slide-in-from-top-1 duration-200">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Closure reason</label>
+ <select
+ value={editedTicket?.closureReason ||""}
+ onChange={(e) => updateLocalField("closureReason", e.target.value)}
+ className="col-span-2 p-1.5 border border-border rounded text-xs outline-none h-8"
+ >
+ <option value="">-- None --</option>
+ {[
+"Duplicate Ticket",
+"Cancelled by User",
+"Rejected Request",
+"No Response from User",
+"Cannot Reproduce",
+"Invalid Request"
+ ].map(reason => (
+ <option key={reason} value={reason}>{reason}</option>
+ ))}
+ </select>
+ </div>
+ )}
+ <div className="grid grid-cols-3 items-start gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase mt-1.5 leading-tight">Resolution notes</label>
+ <textarea
+ value={editedTicket?.resolutionNotes ||""}
+ onChange={(e) => updateLocalField("resolutionNotes", e.target.value)}
+ className="col-span-2 p-2 border border-border rounded text-xs outline-none min-h-[80px] resize-none focus:ring-1 focus:ring-blue-500 transition-all"
+ placeholder="Explain how the issue was resolved..."
+ />
+ </div>
+ </div>
+ <div className="space-y-4">
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolution duration</label>
+ <input readOnly value={ticket.resolutionDuration ? `${Math.round(ticket.resolutionDuration / 3600000)}h ${Math.round((ticket.resolutionDuration % 3600000) / 60000)}m` :"—"} className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs" />
+ </div>
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolved by</label>
+ <input readOnly value={ticket.resolvedBy || profile?.name ||"-"} className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs" />
+ </div>
+ <div className="grid grid-cols-3 items-center gap-4">
+ <label className="text-[11px] text-right font-medium text-muted-foreground uppercase leading-tight">Resolved at</label>
+ <input readOnly value={ticket.resolvedAt ? new Date(ticket.resolvedAt).toLocaleString() :"—"} className="col-span-2 p-1.5 bg-muted/30 border border-border rounded text-xs" />
+ </div>
+ </div>
+ </div>
+ </div>
+ ) : null}
+ </div>
+ </div>
+
+
+
+ <SLADelayDialog
+ open={!!activePendingType}
+ pendingType={activePendingType}
+ saving={slaDelaySaving}
+ monitoredSla={effectiveSlaDelay?.usage.slaType || effectiveSlaDelay?.meta.monitoredSla || null}
+ percentageUsed={effectiveSlaDelay?.usage.percentageUsed || effectiveSlaDelay?.meta.monitoredPercentage || 0}
+ reminderCount={effectiveSlaDelay?.meta.reminderCount || 0}
+ breachDurationLabel={undefined}
+ form={slaDelayForm}
+ onChange={updateSlaDelayField}
+ onSubmit={handleSubmitSlaDelay}
+ />
+
+ <SaveActivityModal
+ show={showSessionPopup}
+ onClose={() => setShowSessionPopup(false)}
+ sessionForm={sessionForm}
+ setSessionForm={setSessionForm}
+ onSave={handleSaveSession}
+ savingSession={savingSession}
+ selectedIncident={ticket?.number}
+ />
+ </div>
+ );
 }
