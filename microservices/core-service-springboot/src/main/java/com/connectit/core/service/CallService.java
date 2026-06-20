@@ -48,6 +48,10 @@ public class CallService {
         // Audit Trail entry
         logActivity(saved.getId(), "Call Log Created", createdBy, createdByName, "Call log initialized");
 
+        if (Boolean.TRUE.equals(call.getCreateTicket())) {
+            convertToTicket(saved.getId(), createdBy, createdByName);
+        }
+
         return saved;
     }
 

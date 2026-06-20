@@ -39,6 +39,7 @@ export function CreateCall() {
  return localISOTime;
  };
  const [callDateTime, setCallDateTime] = useState(getLocalDateTimeString());
+ const [createTicket, setCreateTicket] = useState(false);
 
  // Agents list
  const [agents, setAgents] = useState<any[]>([]);
@@ -124,6 +125,7 @@ export function CreateCall() {
  agentUid,
  agentName,
  callDateTime: new Date(callDateTime).toISOString(),
+ createTicket,
  };
 
  const res = await fetch("/api/calls", {
@@ -356,6 +358,24 @@ export function CreateCall() {
  className="w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-[#2D3B55] rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-[#111827] text-slate-800 dark:text-white transition-all h-10"
  required
  />
+ </div>
+ </div>
+
+ <div className="flex items-center gap-3.5 bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 p-4 rounded-2xl transition-all">
+ <input
+ type="checkbox"
+ id="createTicket"
+ checked={createTicket}
+ onChange={(e) => setCreateTicket(e.target.checked)}
+ className="w-4.5 h-4.5 text-blue-600 border-slate-300 rounded-lg focus:ring-blue-500 dark:bg-[#111827] dark:border-[#2D3B55] cursor-pointer"
+ />
+ <div className="flex flex-col">
+ <label htmlFor="createTicket" className="text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
+ Auto-create Corresponding Support Ticket
+ </label>
+ <span className="text-[10px] text-slate-500 dark:text-slate-400">
+ This will automatically create a support ticket using this call's subject, description, and agent assignment.
+ </span>
  </div>
  </div>
  </div>

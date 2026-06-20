@@ -61,6 +61,9 @@ public class CallLog {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Transient
+    private Boolean createTicket;
+
     @PrePersist
     public void prePersist() {
         createdAt = LocalDateTime.now();
