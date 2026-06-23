@@ -295,6 +295,14 @@ export function Timesheet() {
  const [emailCc, setEmailCc] = useState(false);
  const [emailCcEmails, setEmailCcEmails] = useState("");
  const [emailBundled, setEmailBundled] = useState(false);
+ // Email send fields
+ const [emailTo, setEmailTo] = useState("");
+ const [emailSubject, setEmailSubject] = useState("");
+ const [emailBody, setEmailBody] = useState("");
+ const [emailAutoSync, setEmailAutoSync] = useState(true);
+ const [emailSending, setEmailSending] = useState(false);
+ const [emailStatus, setEmailStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
 
  // WhatsApp section
  const [waCountryCode, setWaCountryCode] = useState("+91");
@@ -447,6 +455,20 @@ export function Timesheet() {
  useEffect(() => {
  if (waAutoSync) setWaMessage(notesContent);
  }, [notesContent, waAutoSync]);
+
+ /* ── Auto-sync notes → Email body ── */
+ useEffect(() => {
+ if (emailAutoSync) {
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = notesContent;
+  setEmailBody(tempDiv.textContent || tempDiv.innerText || notesContent);
+ }
+ }, [notesContent, emailAutoSync]);
+
+ /* ── Default email subject ── */
+ useEffect(() => {
+ setEmailSubject(prev => (!prev || prev.startsWith("Ticket Notes")) ? `Ticket Notes — ${entryDate}` : prev);
+ }, [entryDate]);
 
  const handleEditorInput = useCallback(() => {
  if (editorRef.current) {
@@ -656,19 +678,42 @@ export function Timesheet() {
  }
  }
 
- function handleSendEmail() {
- const tempDiv = document.createElement("div");
- tempDiv.innerHTML = notesContent || waMessage;
- const cleanBody = tempDiv.textContent || tempDiv.innerText || notesContent || waMessage;
-
- // Build mailto link
- const subject = encodeURIComponent(`Timesheet Notes — ${entryDate}`);
- const body = encodeURIComponent(cleanBody);
- window.open(`mailto:?subject=${subject}&body=${body}`,"_blank");
-
- // Save to history
- const recipient = emailContactName || emailFrom ||"Contact";
- saveMessageHistory("email", recipient, cleanBody);
+ async function handleSendEmail() {
+ if (!emailTo.trim()) {
+  setEmailStatus({ type: "error", message: "Please enter a recipient email address." });
+  return;
+ }
+ if (!emailBody.trim()) {
+  setEmailStatus({ type: "error", message: "Email body cannot be empty." });
+  return;
+ }
+ setEmailSending(true);
+ setEmailStatus(null);
+ try {
+  const res = await fetch("/api/email/send-note", {
+   method: "POST",
+   headers: { "Content-Type": "application/json" },
+   body: JSON.stringify({
+    to: emailTo.trim(),
+    subject: emailSubject.trim() || `Ticket Notes — ${entryDate}`,
+    body: `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">${emailBody.replace(/\n/g, "<br/>")}</div>`,
+   }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || data?.message || `Server error ${res.status}`);
+  setEmailStatus({ type: "success", message: `Email sent successfully to ${emailTo}!` });
+  saveMessageHistory("email", emailTo.trim(), emailBody);
+  setTimeout(() => setEmailStatus(null), 5000);
+ } catch (e: any) {
+  const msg = e.message || "Unknown error";
+  if (msg.includes("535") || msg.toLowerCase().includes("smtpclientauthentication")) {
+   setEmailStatus({ type: "error", message: "Email server authentication failed. Your M365 admin needs to enable SMTP AUTH for this mailbox. Alternatively, configure an SMTP provider in Email Integrations." });
+  } else {
+   setEmailStatus({ type: "error", message: `Failed to send email: ${msg}` });
+  }
+ } finally {
+  setEmailSending(false);
+ }
  }
 
  async function pasteFromClipboard(target:"email" |"whatsapp") {
@@ -1123,85 +1168,100 @@ export function Timesheet() {
  isOpen={sendEmailOpen}
  onToggle={() => setSendEmailOpen(!sendEmailOpen)}
  >
- <div className="p-5 space-y-3">
+ <div className="p-5 space-y-4">
+
+ {/* To field */}
  <div className="grid grid-cols-6 items-center gap-3">
- <label className="text-xs text-muted-foreground font-medium col-span-1">From:</label>
- <div className="col-span-5 text-sm">{emailFrom}</div>
- </div>
- <div className="grid grid-cols-6 items-center gap-3">
- <label className="text-xs text-muted-foreground font-medium col-span-1">Contact:</label>
- <div className="col-span-5 flex items-center gap-2">
- <input type="checkbox" checked={emailContact} onChange={e => setEmailContact(e.target.checked)} className="w-4 h-4 accent-blue-600 rounded" />
- <span className="text-sm">{emailContactName ||"N/A"}</span>
- </div>
- </div>
- <div className="grid grid-cols-6 items-center gap-3">
- <label className="text-xs text-muted-foreground font-medium col-span-1">Resources:</label>
- <div className="col-span-5 flex items-center gap-2">
- <input type="checkbox" checked={emailResources} onChange={e => setEmailResources(e.target.checked)} className="w-4 h-4 accent-blue-600 rounded" />
- <span className="text-sm">{profile?.name ||""}</span>
- </div>
- </div>
- <div className="grid grid-cols-6 items-center gap-3">
- <label className="text-xs text-muted-foreground font-medium col-span-1">Cc:</label>
- <div className="col-span-5 flex items-center gap-2">
- <input type="checkbox" checked={emailCc} onChange={e => setEmailCc(e.target.checked)} className="w-4 h-4 accent-blue-600 rounded" />
+ <label className="text-xs text-muted-foreground font-medium col-span-1">To:</label>
+ <div className="col-span-5">
  <input
- type="text"
- value={emailCcEmails}
- onChange={e => setEmailCcEmails(e.target.value)}
- placeholder="Separate emails with commas"
- className="flex-1 p-1 border border-border rounded text-sm outline-none focus:ring-1 focus:ring-blue-600 h-8"
+ id="email-to-field"
+ type="email"
+ value={emailTo}
+ onChange={e => setEmailTo(e.target.value)}
+ placeholder="recipient@example.com"
+ className="w-full p-1.5 border border-border rounded text-sm outline-none focus:ring-1 focus:ring-blue-600 h-8"
  />
  </div>
  </div>
+
+ {/* From field (read-only) */}
  <div className="grid grid-cols-6 items-center gap-3">
- <label className="text-xs text-muted-foreground font-medium col-span-1">Bundled Tickets:</label>
- <div className="col-span-5 flex items-center gap-2">
- <input type="checkbox" checked={emailBundled} onChange={e => setEmailBundled(e.target.checked)} className="w-4 h-4 accent-blue-600 rounded" />
+ <label className="text-xs text-muted-foreground font-medium col-span-1">From:</label>
+ <div className="col-span-5 text-sm text-muted-foreground">info@technosprint.net</div>
+ </div>
+
+ {/* Subject field */}
+ <div className="grid grid-cols-6 items-center gap-3">
+ <label className="text-xs text-muted-foreground font-medium col-span-1">Subject:</label>
+ <div className="col-span-5">
+ <input
+ id="email-subject-field"
+ type="text"
+ value={emailSubject}
+ onChange={e => setEmailSubject(e.target.value)}
+ placeholder={`Ticket Notes — ${entryDate}`}
+ className="w-full p-1.5 border border-border rounded text-sm outline-none focus:ring-1 focus:ring-blue-600 h-8"
+ />
  </div>
  </div>
+
+ {/* Message body */}
  <div className="grid grid-cols-6 items-start gap-3">
- <label className="text-xs text-muted-foreground font-medium col-span-1 mt-1">Attachments:</label>
- <div className="col-span-5 space-y-2">
- <div className="flex items-center gap-3">
- <input type="file" className="text-xs" />
- <span className="text-xs text-muted-foreground">or</span>
+ <label className="text-xs text-muted-foreground font-medium col-span-1 mt-2">Message:</label>
+ <div className="col-span-5">
+ <textarea
+ id="email-body-field"
+ value={emailBody}
+ onChange={e => { setEmailBody(e.target.value); setEmailAutoSync(false); }}
+ rows={5}
+ className="w-full p-2 border border-border rounded text-sm outline-none focus:ring-1 focus:ring-blue-600 resize-none"
+ placeholder="Email body will auto-populate from Notes..."
+ />
+ <p className="text-xs text-muted-foreground mt-1">
+ {emailAutoSync ? "✓ Auto-synced with Notes" : "Manual mode — "}
+ {!emailAutoSync && (
  <button
- type="button"
- onClick={() => pasteFromClipboard("email")}
- className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-xs flex items-center gap-1 transition-colors"
- >
- <Paperclip className="w-3 h-3" /> Paste from Clipboard
- </button>
+ onClick={() => {
+  setEmailAutoSync(true);
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = notesContent;
+  setEmailBody(tempDiv.textContent || tempDiv.innerText || notesContent);
+ }}
+ className="text-blue-600 hover:underline ml-1"
+ >Re-sync</button>
+ )}
+ </p>
  </div>
- {/* Clipboard preview */}
- {emailClipboard && (
- <div className="flex items-start gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
- {emailClipboard.type ==="image" ? (
- <img src={emailClipboard.value} alt="Pasted" className="h-16 w-auto rounded border border-blue-200 object-contain bg-white" />
- ) : (
- <div className="flex-1 text-xs text-gray-700 bg-white border border-blue-200 rounded p-2 max-h-16 overflow-hidden">
- {emailClipboard.label}
+ </div>
+
+ {/* Status message */}
+ {emailStatus && (
+ <div className={`rounded-lg px-4 py-3 text-sm font-medium ${
+ emailStatus.type === "success"
+  ? "bg-green-50 border border-green-200 text-green-800"
+  : "bg-red-50 border border-red-200 text-red-800"
+ }`}>
+ {emailStatus.message}
  </div>
  )}
- <button
- onClick={() => setEmailClipboard(null)}
- className="text-gray-400 hover:text-red-500 transition-colors text-base leading-none flex-shrink-0"
- title="Remove"
- >×</button>
- </div>
- )}
- </div>
- </div>
+
+ {/* Send button */}
  <div className="flex justify-end">
  <button
+ id="send-email-btn"
  onClick={handleSendEmail}
- className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded font-semibold text-sm hover:bg-blue-700 transition-colors"
+ disabled={emailSending || !emailTo.trim()}
+ className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded font-semibold text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
  >
- <Mail className="w-4 h-4" /> Send Email
+ {emailSending ? (
+ <><RefreshCw className="w-4 h-4 animate-spin" /> Sending...</>
+ ) : (
+ <><Mail className="w-4 h-4" /> Send Email</>
+ )}
  </button>
  </div>
+
  </div>
  </Section>
 

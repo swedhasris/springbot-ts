@@ -628,10 +628,13 @@ public class EmailService {
     }
 
     private JavaMailSender getActiveMailSender(CompanyEmailConfig cfg) {
-        String host = cfg != null ? cfg.getSmtpHost() : smtpHost;
-        int port = cfg != null ? (cfg.getSmtpPort() != null ? cfg.getSmtpPort() : 587) : (smtpPort != null ? smtpPort : 587);
-        String username = cfg != null ? cfg.getSmtpUser() : smtpUser;
-        String password = cfg != null ? cfg.getSmtpPass() : smtpPassword;
+        if (cfg == null) {
+            return mailSender;
+        }
+        String host = cfg.getSmtpHost();
+        int port = cfg.getSmtpPort() != null ? cfg.getSmtpPort() : 587;
+        String username = cfg.getSmtpUser();
+        String password = cfg.getSmtpPass();
 
         JavaMailSenderImpl impl = new JavaMailSenderImpl();
         impl.setHost(host);

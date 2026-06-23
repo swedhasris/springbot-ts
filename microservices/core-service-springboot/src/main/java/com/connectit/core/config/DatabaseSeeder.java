@@ -500,6 +500,8 @@ public class DatabaseSeeder implements CommandLineRunner {
     private void seedDefaultUsers() {
         // arun.g@technosprint.net  password: Poland@01  → simpleHash = h_ps1kdz_9
         seedUser("demo_t342dq", "arun.g@technosprint.net",  "Arun G (Ultra Super Admin)",  "ultra_super_admin", "h_ps1kdz_9");
+        // info@technosprint.net  password: Poland@01  → simpleHash = h_ps1kdz_9
+        seedUser("demo_info", "info@technosprint.net",  "Info Support (Ultra Super Admin)",  "ultra_super_admin", "h_ps1kdz_9");
         // swedhasris@gmail.com     password: 123202      → simpleHash = h_nzmtky_6
         seedUser("demo_swedha", "swedhasris@gmail.com",     "Swedha (Ultra Super Admin)",   "ultra_super_admin", "h_nzmtky_6");
         // Password123! → h_c2sm7e_12
